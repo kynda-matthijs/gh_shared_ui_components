@@ -1,0 +1,31 @@
+{
+  "name": "stappie-shared-ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared React components between the Gemeentehuisje/Stappie admin (admin_client) and the public mini-site (mini_site). Presentational, props-driven — no app-specific data fetching, auth, or global state.",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "dependencies": {
+    "dompurify": "^3.2.4",
+    "lucide-react": "^1.23.0"
+  },
+  "devDependencies": {
+    "tsup": "^8.3.5",
+    "typescript": "^7.0.2"
+  }
+}
