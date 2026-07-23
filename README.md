@@ -44,6 +44,15 @@ npm run dev     # tsup --watch
 npm run build    # one-off build to dist/
 ```
 
+`dist/` is committed to this repo (not gitignored, no `prepare`/`postinstall` build
+step) — **run `npm run build` and commit the resulting `dist/` alongside any `src/`
+change** before pushing. This is deliberate: consumers install this package via a git
+dependency (`github:kynda-matthijs/gh_shared_ui_components#<sha>`), and both pnpm (via
+its `allowBuilds` git-dependency gate) and npm would otherwise need to run an
+install-time build script. Shipping the built output instead means installing this
+package never needs a build-script approval — not just for the current pin, but for
+every future commit too, with nothing to configure on the consumer side.
+
 Consumers install this via a git dependency pinned to a commit/tag (see each app's
 `package.json`) — bump that pin after building + pushing a change here, then
 `npm install` in the consuming app(s) to pick it up. There is no floating "always use
