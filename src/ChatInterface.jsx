@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useId } from 'react';
 import { Bot, Send, Phone, Mail, Globe, MapPin, Loader2, AlertCircle, X, Trash2 } from 'lucide-react';
 import DOMPurify from 'dompurify';
 
@@ -204,6 +204,7 @@ export default function ChatInterface({
     const logRef   = useRef(null);
     const inputRef = useRef(null);
     const toggleRef = useRef(null);
+    const inputId  = useId();
 
     const scrollToBottom = useCallback(() => {
         requestAnimationFrame(() => {
@@ -345,18 +346,18 @@ export default function ChatInterface({
             )}
 
             <form className="sui-chat-form" onSubmit={send}>
-                <label className="sui-chat-sr-only">{strings.inputLabel}
-                    <input
-                        ref={inputRef}
-                        type="text"
-                        className="sui-chat-input"
-                        placeholder={placeholder || strings.inputLabel}
-                        value={input}
-                        onChange={e => setInput(e.target.value)}
-                        disabled={pending}
-                        autoComplete="off"
-                    />
-                </label>
+                <label className="sui-chat-sr-only" htmlFor={inputId}>{strings.inputLabel}</label>
+                <input
+                    ref={inputRef}
+                    id={inputId}
+                    type="text"
+                    className="sui-chat-input"
+                    placeholder={placeholder || strings.inputLabel}
+                    value={input}
+                    onChange={e => setInput(e.target.value)}
+                    disabled={pending}
+                    autoComplete="off"
+                />
                 <button type="submit" className="sui-chat-send-btn" disabled={pending || !input.trim()} aria-label={strings.send}>
                     {pending ? <Loader2 className="sui-chat-icon sui-chat-spin" /> : <Send className="sui-chat-icon" />}
                 </button>
