@@ -100,11 +100,19 @@ function saveMessages(key, messages) {
     catch { /* private browsing / quota exceeded — degrade to in-memory only */ }
 }
 
-function SourceCard({ meta, strings, moreInfoHref }) {
+// moreInfoHrefPattern is a plain string like "/service/{id}/", not a function — props
+// passed into an Astro client:load island are serialized to JSON, which can't carry
+// functions across the server→client boundary, so this has to stay data, not code.
+function buildMoreInfoHref(pattern, entityId) {
+    if (!pattern) return null;
+    return pattern.replace('{id}', encodeURIComponent(entityId));
+}
+
+function SourceCard({ meta, strings, moreInfoHrefPattern }) {
     let ctx = {};
     try { ctx = JSON.parse(meta.context || '{}'); } catch { /* ignore */ }
     const safeUrl = sanitizeUrl(ctx.url);
-    const infoHref = moreInfoHref ? moreInfoHref(meta.entity_id) : null;
+    const infoHref = buildMoreInfoHref(moreInfoHrefPattern, meta.entity_id);
     return (
         <div className="sui-chat-source-card">
             <div className="sui-chat-source-title">{meta.name || ctx.naam || ''}</div>
@@ -142,7 +150,7 @@ function SourceCard({ meta, strings, moreInfoHref }) {
     );
 }
 
-function Message({ role, content, chunks, streaming, strings, moreInfoHref }) {
+function Message({ role, content, chunks, streaming, strings, moreInfoHrefPattern }) {
     const sources = role === 'assistant' ? dedupeSources(chunks) : [];
     return (
         <div className={`sui-chat-msg sui-chat-msg--${role}`}>
@@ -159,7 +167,7 @@ function Message({ role, content, chunks, streaming, strings, moreInfoHref }) {
                         <h4 className="sui-chat-sources-heading">{strings.relatedHelp}</h4>
                         <div className="sui-chat-sources-grid">
                             {sources.map(s => (
-                                <SourceCard key={s.meta.entity_id} meta={s.meta} strings={strings} moreInfoHref={moreInfoHref} />
+                                <SourceCard key={s.meta.entity_id} meta={s.meta} strings={strings} moreInfoHrefPattern={moreInfoHrefPattern} />
                             ))}
                         </div>
                     </div>
@@ -176,7 +184,7 @@ export default function ChatInterface({
     variant = 'chat-page',
     dir = 'ltr',
     placeholder,
-    moreInfoHref = null,
+    moreInfoHrefPattern = null,
     persistKey = null,
 }) {
     const strings = { ...DEFAULT_STRINGS, ...stringsProp };
@@ -310,9 +318,9 @@ export default function ChatInterface({
                     <p className="sui-chat-log-hint">{strings.inputLabel}…</p>
                 )}
                 {messages.map((m, i) => (
-                    <Message key={i} {...m} strings={strings} moreInfoHref={moreInfoHref} />
+                    <Message key={i} {...m} strings={strings} moreInfoHrefPattern={moreInfoHrefPattern} />
                 ))}
-                {streaming && <Message role="assistant" content={streaming} streaming strings={strings} moreInfoHref={moreInfoHref} />}
+                {streaming && <Message role="assistant" content={streaming} streaming strings={strings} moreInfoHrefPattern={moreInfoHrefPattern} />}
             </div>
 
             <div className="sui-chat-status" role="status" aria-live="polite">
