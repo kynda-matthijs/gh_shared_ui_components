@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Bot, Send, Phone, Mail, Globe, Loader2, AlertCircle, X, Trash2 } from 'lucide-react';
+import { Bot, Send, Phone, Mail, Globe, MapPin, Loader2, AlertCircle, X, Trash2 } from 'lucide-react';
 import DOMPurify from 'dompurify';
 
 // ChatInterface — shared, presentational chat UI talking directly to a Cloudflare AI
@@ -22,7 +22,7 @@ const DEFAULT_STRINGS = {
     title: 'Ask your question', inputLabel: 'Type your question', send: 'Send',
     thinking: 'Thinking…', error: 'Something went wrong. Please try again.',
     retry: 'Try again', relatedHelp: 'Related help',
-    call: 'Call', email: 'Email', website: 'Website', moreInfo: 'More info',
+    call: 'Call', email: 'Email', website: 'Website', route: 'Directions', moreInfo: 'More info',
     openChat: 'Open chat', closeChat: 'Close chat', clearChat: 'Clear chat',
     you: 'You', assistant: 'Assistant',
     disclaimer: 'This is an AI assistant. Always double-check important details with the organisation itself.',
@@ -123,6 +123,13 @@ function SourceCard({ meta, strings, moreInfoHref }) {
                 {safeUrl && (
                     <a className="sui-chat-action-btn" href={safeUrl} target="_blank" rel="noopener noreferrer">
                         <Globe className="sui-chat-icon" /> {strings.website}
+                    </a>
+                )}
+                {ctx.adres && (
+                    <a className="sui-chat-action-btn"
+                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ctx.adres)}`}
+                        target="_blank" rel="noopener noreferrer">
+                        <MapPin className="sui-chat-icon" /> {strings.route}
                     </a>
                 )}
                 {infoHref && (
