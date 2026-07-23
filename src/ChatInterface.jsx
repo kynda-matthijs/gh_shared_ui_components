@@ -191,7 +191,12 @@ export default function ChatInterface({
     const isBubble = variant === 'chat-bubble';
 
     const [open,      setOpen]      = useState(!isBubble);
-    const [messages,  setMessages]  = useState(() => loadMessages(persistKey));
+    // Starts empty (not from sessionStorage) so server-rendered HTML matches the
+    // client's first render — restoring persisted history happens in the effect below,
+    // which only runs after hydration, avoiding a hydration mismatch (sessionStorage
+    // doesn't exist during Astro's SSR pass, but this component still gets SSR'd even
+    // though it's mounted via client:load).
+    const [messages,  setMessages]  = useState([]);
     const [input,     setInput]     = useState('');
     const [streaming, setStreaming] = useState('');
     const [pending,   setPending]   = useState(false);
@@ -209,6 +214,14 @@ export default function ChatInterface({
     useEffect(() => {
         if (open && inputRef.current) inputRef.current.focus();
     }, [open]);
+
+    // Client-only: restore any persisted conversation after hydration (see the
+    // messages useState above for why this can't happen in the initializer).
+    useEffect(() => {
+        const stored = loadMessages(persistKey);
+        if (stored.length) setMessages(stored);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const clearChat = useCallback(() => {
         setMessages([]);
