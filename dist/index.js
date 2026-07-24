@@ -1,6 +1,6 @@
 // src/ChatInterface.jsx
 import { useState, useRef, useCallback, useEffect, useId } from "react";
-import { Bot, Send, Loader2, AlertCircle, X, Trash2 } from "lucide-react";
+import { Bot, Send, Loader2, AlertCircle, X, Trash2, MessageCircle as MessageCircle2 } from "lucide-react";
 import DOMPurify from "dompurify";
 
 // src/ActionButtons.jsx
@@ -49,8 +49,42 @@ function ActionButtons({ tel, email, url, address, moreInfoHref, strings }) {
   ] });
 }
 
+// src/starterIcons.js
+import {
+  Home,
+  Utensils,
+  Wallet,
+  Users,
+  HeartPulse,
+  FileText,
+  ShieldAlert,
+  Briefcase,
+  HelpCircle,
+  Phone as Phone2,
+  MapPin as MapPin2,
+  Clock,
+  MessageCircle,
+  Heart
+} from "lucide-react";
+var STARTER_ICONS = {
+  Home,
+  Utensils,
+  Wallet,
+  Users,
+  HeartPulse,
+  FileText,
+  ShieldAlert,
+  Briefcase,
+  HelpCircle,
+  Phone: Phone2,
+  MapPin: MapPin2,
+  Clock,
+  MessageCircle,
+  Heart
+};
+
 // src/ChatInterface.jsx
-import { jsx as jsx2, jsxs as jsxs2 } from "react/jsx-runtime";
+import { Fragment, jsx as jsx2, jsxs as jsxs2 } from "react/jsx-runtime";
 var PUBLIC_FILTER = { folder: { $gte: "public/", $lt: "public0" } };
 var DEFAULT_STRINGS = {
   title: "Ask your question",
@@ -205,6 +239,16 @@ function IntakeForm({ intake, onChange, askName, askAge, askGender, strings, ope
     ] })
   ] });
 }
+function StarterButtons({ starters, onPick }) {
+  if (!(starters == null ? void 0 : starters.length)) return null;
+  return /* @__PURE__ */ jsx2("div", { className: "sui-chat-starters", children: starters.map((s) => {
+    const Icon = STARTER_ICONS[s.icon] ?? MessageCircle2;
+    return /* @__PURE__ */ jsxs2("button", { type: "button", className: "sui-chat-starter-btn", onClick: () => onPick(s), children: [
+      /* @__PURE__ */ jsx2(Icon, { className: "sui-chat-icon" }),
+      /* @__PURE__ */ jsx2("span", { children: s.label })
+    ] }, s.id);
+  }) });
+}
 function Message({ role, content, chunks, streaming, strings, moreInfoHrefPattern }) {
   const sources = role === "assistant" ? dedupeSources(chunks) : [];
   return /* @__PURE__ */ jsxs2("div", { className: `sui-chat-msg sui-chat-msg--${role}`, children: [
@@ -230,13 +274,16 @@ function ChatInterface({
   persistKey = null,
   askName = false,
   askAge = false,
-  askGender = false
+  askGender = false,
+  starters = [],
+  autoSendStarters = false
 }) {
   const strings = { ...DEFAULT_STRINGS, ...stringsProp };
   const isBubble = variant === "chat-bubble";
   const [open, setOpen] = useState(!isBubble);
   const [intake, setIntake] = useState({ name: "", age: "", gender: "" });
   const [intakeOpen, setIntakeOpen] = useState(true);
+  const pendingExtraPromptRef = useRef("");
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState("");
@@ -271,10 +318,9 @@ function ChatInterface({
     }
     (_a = inputRef.current) == null ? void 0 : _a.focus();
   }, [persistKey]);
-  const send = useCallback(async (e) => {
+  const sendQuery = useCallback(async (query, extraPrompt = "") => {
     var _a, _b, _c;
-    e.preventDefault();
-    const query = input.trim();
+    query = query.trim();
     if (!query || pending) return;
     setError("");
     const nextMessages = [...messages, { role: "user", content: query }];
@@ -288,7 +334,7 @@ function ChatInterface({
     const apiUrl = `https://${aiSearchId}.search.ai.cloudflare.com/chat/completions`;
     const body = {
       messages: [
-        { role: "system", content: `Respond in ${languageName}. Keep answers concise and easy to read for someone who may be in a stressful situation.${buildIntakeContext(intake)}` },
+        { role: "system", content: `Respond in ${languageName}. Keep answers concise and easy to read for someone who may be in a stressful situation.${buildIntakeContext(intake)}${extraPrompt ? ` ${extraPrompt}` : ""}` },
         ...nextMessages.map((m) => ({ role: m.role, content: m.content }))
       ],
       stream: true,
@@ -345,7 +391,23 @@ function ChatInterface({
       setPending(false);
       scrollToBottom();
     }
-  }, [input, pending, messages, aiSearchId, languageName, persistKey, strings.error, scrollToBottom, intake]);
+  }, [pending, messages, aiSearchId, languageName, persistKey, strings.error, scrollToBottom, intake]);
+  const handleFormSubmit = useCallback((e) => {
+    e.preventDefault();
+    const extra = pendingExtraPromptRef.current;
+    pendingExtraPromptRef.current = "";
+    sendQuery(input, extra);
+  }, [input, sendQuery]);
+  const handleStarterPick = useCallback((starter) => {
+    var _a;
+    if (autoSendStarters) {
+      sendQuery(starter.question, starter.extraPrompt);
+    } else {
+      setInput(starter.question);
+      pendingExtraPromptRef.current = starter.extraPrompt || "";
+      (_a = inputRef.current) == null ? void 0 : _a.focus();
+    }
+  }, [autoSendStarters, sendQuery]);
   if (!aiSearchId) return null;
   const panel = /* @__PURE__ */ jsxs2("div", { className: "sui-chat-panel", children: [
     /* @__PURE__ */ jsxs2("div", { className: "sui-chat-header", children: [
@@ -389,9 +451,12 @@ function ChatInterface({
       }
     ),
     /* @__PURE__ */ jsxs2("div", { className: "sui-chat-log", role: "log", "aria-relevant": "additions", ref: logRef, children: [
-      messages.length === 0 && !streaming && /* @__PURE__ */ jsxs2("p", { className: "sui-chat-log-hint", children: [
-        strings.inputLabel,
-        "\u2026"
+      messages.length === 0 && !streaming && /* @__PURE__ */ jsxs2(Fragment, { children: [
+        /* @__PURE__ */ jsxs2("p", { className: "sui-chat-log-hint", children: [
+          strings.inputLabel,
+          "\u2026"
+        ] }),
+        /* @__PURE__ */ jsx2(StarterButtons, { starters, onPick: handleStarterPick })
       ] }),
       messages.map((m, i) => /* @__PURE__ */ jsx2(Message, { ...m, strings, moreInfoHrefPattern }, i)),
       streaming && /* @__PURE__ */ jsx2(Message, { role: "assistant", content: streaming, streaming: true, strings, moreInfoHrefPattern })
@@ -402,7 +467,7 @@ function ChatInterface({
       " ",
       error
     ] }),
-    /* @__PURE__ */ jsxs2("form", { className: "sui-chat-form", onSubmit: send, children: [
+    /* @__PURE__ */ jsxs2("form", { className: "sui-chat-form", onSubmit: handleFormSubmit, children: [
       /* @__PURE__ */ jsx2("label", { className: "sui-chat-sr-only", htmlFor: inputId, children: strings.inputLabel }),
       /* @__PURE__ */ jsx2(
         "input",
@@ -413,7 +478,10 @@ function ChatInterface({
           className: "sui-chat-input",
           placeholder: placeholder || strings.inputLabel,
           value: input,
-          onChange: (e) => setInput(e.target.value),
+          onChange: (e) => {
+            setInput(e.target.value);
+            pendingExtraPromptRef.current = "";
+          },
           disabled: pending,
           autoComplete: "off"
         }
@@ -442,7 +510,7 @@ function ChatInterface({
 // src/DynamicContentGrid.jsx
 import { useState as useState2 } from "react";
 import { Image as ImageIcon, User as UserIcon, Folder as FolderIcon } from "lucide-react";
-import { Fragment, jsx as jsx3, jsxs as jsxs3 } from "react/jsx-runtime";
+import { Fragment as Fragment2, jsx as jsx3, jsxs as jsxs3 } from "react/jsx-runtime";
 function trunc(s, n = 120) {
   const str = String(s ?? "");
   return str.length > n ? str.slice(0, n) + "\u2026" : str;
@@ -513,7 +581,7 @@ function PreviewCard({ item, design, fieldMap, collection, detailUrlBuilder, dat
   };
   switch (design) {
     case "image-card":
-      return /* @__PURE__ */ jsxs3(Fragment, { children: [
+      return /* @__PURE__ */ jsxs3(Fragment2, { children: [
         /* @__PURE__ */ jsx3("div", { className: "sui-dyn-img", children: /* @__PURE__ */ jsx3(CardImage, { src: g("image") }) }),
         /* @__PURE__ */ jsxs3("div", { className: "sui-dyn-body", children: [
           /* @__PURE__ */ jsx3(Badge, { value: g("badge") }),
@@ -537,7 +605,7 @@ function PreviewCard({ item, design, fieldMap, collection, detailUrlBuilder, dat
         /* @__PURE__ */ jsx3(Badge, { value: g("badge") })
       ] });
     case "person-card":
-      return /* @__PURE__ */ jsxs3(Fragment, { children: [
+      return /* @__PURE__ */ jsxs3(Fragment2, { children: [
         /* @__PURE__ */ jsx3("div", { className: "sui-dyn-avatar-wrap", children: g("image") ? /* @__PURE__ */ jsx3("img", { src: String(g("image")), className: "sui-dyn-avatar", alt: "" }) : /* @__PURE__ */ jsx3("div", { className: "sui-dyn-avatar-placeholder", children: /* @__PURE__ */ jsx3(UserIcon, { className: "sui-dyn-icon" }) }) }),
         /* @__PURE__ */ jsxs3("div", { className: "sui-dyn-body sui-dyn-person-body", children: [
           /* @__PURE__ */ jsx3("h3", { children: g("heading") || item.name || "\u2014" }),
@@ -561,7 +629,7 @@ function PreviewCard({ item, design, fieldMap, collection, detailUrlBuilder, dat
         )
       ] });
     case "document-card":
-      return /* @__PURE__ */ jsxs3(Fragment, { children: [
+      return /* @__PURE__ */ jsxs3(Fragment2, { children: [
         /* @__PURE__ */ jsx3("div", { className: "sui-dyn-doc-icon", children: /* @__PURE__ */ jsx3(FolderIcon, { className: "sui-dyn-icon" }) }),
         /* @__PURE__ */ jsxs3("div", { className: "sui-dyn-body sui-dyn-body-full", children: [
           /* @__PURE__ */ jsx3("h3", { children: g("heading") || item.name || item.title || "\u2014" }),
@@ -674,7 +742,7 @@ function DynamicContentGrid({
   const pos = filterBarConfig.position ?? "top";
   const hasActive = searchTerm.length > 0 || Object.values(activeFilters).some((v) => v.length > 0);
   const buildHref = (item) => detailUrlBuilder ? detailUrlBuilder(item) : defaultDetailUrl(item, fieldMap, collection);
-  const gridContent = /* @__PURE__ */ jsxs3(Fragment, { children: [
+  const gridContent = /* @__PURE__ */ jsxs3(Fragment2, { children: [
     loading && /* @__PURE__ */ jsx3("div", { className: "sui-dyn-grid", style: { "--sui-dyn-cols": Math.min(cols, 4) }, children: Array.from({ length: Math.min(cols * 2, 6) }).map((_, i) => /* @__PURE__ */ jsx3("div", { className: "sui-dyn-skeleton" }, i)) }),
     !loading && error && /* @__PURE__ */ jsxs3("p", { className: "sui-dyn-error", children: [
       "\u26A0 ",
@@ -690,7 +758,7 @@ function DynamicContentGrid({
   return /* @__PURE__ */ jsxs3("section", { className: "sui-dyn-wrap", children: [
     title && /* @__PURE__ */ jsx3("h2", { className: "sui-dyn-title", children: title }),
     hasFilterBar ? /* @__PURE__ */ jsxs3("div", { className: `sui-dyn-layout sui-dyn-layout--${pos}`, children: [
-      pos === "right" || pos === "bottom" ? /* @__PURE__ */ jsxs3(Fragment, { children: [
+      pos === "right" || pos === "bottom" ? /* @__PURE__ */ jsxs3(Fragment2, { children: [
         /* @__PURE__ */ jsx3("div", { className: "sui-dyn-grid-wrap", children: gridContent }),
         /* @__PURE__ */ jsx3(
           FilterBar,
@@ -704,7 +772,7 @@ function DynamicContentGrid({
             strings
           }
         )
-      ] }) : /* @__PURE__ */ jsxs3(Fragment, { children: [
+      ] }) : /* @__PURE__ */ jsxs3(Fragment2, { children: [
         /* @__PURE__ */ jsx3(
           FilterBar,
           {

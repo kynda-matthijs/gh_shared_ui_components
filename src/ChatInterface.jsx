@@ -1,7 +1,8 @@
 import { useState, useRef, useCallback, useEffect, useId } from 'react';
-import { Bot, Send, Loader2, AlertCircle, X, Trash2 } from 'lucide-react';
+import { Bot, Send, Loader2, AlertCircle, X, Trash2, MessageCircle } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import ActionButtons, { sanitizeUrl } from './ActionButtons.jsx';
+import { STARTER_ICONS } from './starterIcons.js';
 
 // ChatInterface — shared, presentational chat UI talking directly to a Cloudflare AI
 // Search instance's public endpoint. Used by both:
@@ -173,6 +174,28 @@ function IntakeForm({ intake, onChange, askName, askAge, askGender, strings, ope
     );
 }
 
+// Conversation-starter shortcut buttons — CMS-configured (label, icon, the actual
+// question, and an optional extraPrompt hidden from the visible transcript, see
+// module comment on buildIntakeContext's sibling handling in `sendQuery` below).
+// Only shown before the first message, same "welcome screen" convention as the
+// sui-chat-log-hint text it replaces.
+function StarterButtons({ starters, onPick }) {
+    if (!starters?.length) return null;
+    return (
+        <div className="sui-chat-starters">
+            {starters.map(s => {
+                const Icon = STARTER_ICONS[s.icon] ?? MessageCircle;
+                return (
+                    <button key={s.id} type="button" className="sui-chat-starter-btn" onClick={() => onPick(s)}>
+                        <Icon className="sui-chat-icon" />
+                        <span>{s.label}</span>
+                    </button>
+                );
+            })}
+        </div>
+    );
+}
+
 function Message({ role, content, chunks, streaming, strings, moreInfoHrefPattern }) {
     const sources = role === 'assistant' ? dedupeSources(chunks) : [];
     return (
@@ -212,6 +235,8 @@ export default function ChatInterface({
     askName = false,
     askAge = false,
     askGender = false,
+    starters = [],
+    autoSendStarters = false,
 }) {
     const strings = { ...DEFAULT_STRINGS, ...stringsProp };
     const isBubble = variant === 'chat-bubble';
@@ -219,6 +244,12 @@ export default function ChatInterface({
     const [open,      setOpen]      = useState(!isBubble);
     const [intake,      setIntake]      = useState({ name: '', age: '', gender: '' });
     const [intakeOpen,  setIntakeOpen]  = useState(true);
+    // Set when a starter is picked in "review" mode (autoSendStarters=false) — the
+    // question fills the input for the person to read/edit, but the starter's hidden
+    // extraPrompt still needs to travel with it whenever they do hit send. Cleared on
+    // send, and on any manual edit to the input (see the input's onChange below) so an
+    // unrelated typed message never picks up a stale extra prompt.
+    const pendingExtraPromptRef = useRef('');
     // Starts empty (not from sessionStorage) so server-rendered HTML matches the
     // client's first render — restoring persisted history happens in the effect below,
     // which only runs after hydration, avoiding a hydration mismatch (sessionStorage
@@ -260,9 +291,11 @@ export default function ChatInterface({
         inputRef.current?.focus();
     }, [persistKey]);
 
-    const send = useCallback(async (e) => {
-        e.preventDefault();
-        const query = input.trim();
+    // extraPrompt is a conversation-starter's hidden context (see StarterButtons) —
+    // it's appended to the system message for this one turn only, never shown in the
+    // visible transcript (nextMessages/Message rendering only ever sees `query`).
+    const sendQuery = useCallback(async (query, extraPrompt = '') => {
+        query = query.trim();
         if (!query || pending) return;
 
         setError('');
@@ -278,7 +311,7 @@ export default function ChatInterface({
         const apiUrl = `https://${aiSearchId}.search.ai.cloudflare.com/chat/completions`;
         const body = {
             messages: [
-                { role: 'system', content: `Respond in ${languageName}. Keep answers concise and easy to read for someone who may be in a stressful situation.${buildIntakeContext(intake)}` },
+                { role: 'system', content: `Respond in ${languageName}. Keep answers concise and easy to read for someone who may be in a stressful situation.${buildIntakeContext(intake)}${extraPrompt ? ` ${extraPrompt}` : ''}` },
                 ...nextMessages.map(m => ({ role: m.role, content: m.content })),
             ],
             stream: true,
@@ -333,7 +366,24 @@ export default function ChatInterface({
             setPending(false);
             scrollToBottom();
         }
-    }, [input, pending, messages, aiSearchId, languageName, persistKey, strings.error, scrollToBottom, intake]);
+    }, [pending, messages, aiSearchId, languageName, persistKey, strings.error, scrollToBottom, intake]);
+
+    const handleFormSubmit = useCallback((e) => {
+        e.preventDefault();
+        const extra = pendingExtraPromptRef.current;
+        pendingExtraPromptRef.current = '';
+        sendQuery(input, extra);
+    }, [input, sendQuery]);
+
+    const handleStarterPick = useCallback((starter) => {
+        if (autoSendStarters) {
+            sendQuery(starter.question, starter.extraPrompt);
+        } else {
+            setInput(starter.question);
+            pendingExtraPromptRef.current = starter.extraPrompt || '';
+            inputRef.current?.focus();
+        }
+    }, [autoSendStarters, sendQuery]);
 
     if (!aiSearchId) return null;
 
@@ -364,7 +414,10 @@ export default function ChatInterface({
 
             <div className="sui-chat-log" role="log" aria-relevant="additions" ref={logRef}>
                 {messages.length === 0 && !streaming && (
-                    <p className="sui-chat-log-hint">{strings.inputLabel}…</p>
+                    <>
+                        <p className="sui-chat-log-hint">{strings.inputLabel}…</p>
+                        <StarterButtons starters={starters} onPick={handleStarterPick} />
+                    </>
                 )}
                 {messages.map((m, i) => (
                     <Message key={i} {...m} strings={strings} moreInfoHrefPattern={moreInfoHrefPattern} />
@@ -380,7 +433,7 @@ export default function ChatInterface({
                 <p className="sui-chat-error"><AlertCircle className="sui-chat-icon-sm" /> {error}</p>
             )}
 
-            <form className="sui-chat-form" onSubmit={send}>
+            <form className="sui-chat-form" onSubmit={handleFormSubmit}>
                 <label className="sui-chat-sr-only" htmlFor={inputId}>{strings.inputLabel}</label>
                 <input
                     ref={inputRef}
@@ -389,7 +442,7 @@ export default function ChatInterface({
                     className="sui-chat-input"
                     placeholder={placeholder || strings.inputLabel}
                     value={input}
-                    onChange={e => setInput(e.target.value)}
+                    onChange={e => { setInput(e.target.value); pendingExtraPromptRef.current = ''; }}
                     disabled={pending}
                     autoComplete="off"
                 />
