@@ -240,15 +240,28 @@ function IntakeForm({ intake, onChange, askName, askAge, askGender, strings, ope
     ] })
   ] });
 }
-function StarterButtons({ starters, onPick }) {
+function StarterButtons({ starters, onPick, onPreview }) {
   const visible = (starters ?? []).filter((s) => s.active !== false);
   if (!visible.length) return null;
   return /* @__PURE__ */ jsx2("div", { className: "sui-chat-starters", children: visible.map((s) => {
     const Icon = STARTER_ICONS[s.icon] ?? MessageCircle2;
-    return /* @__PURE__ */ jsxs2("button", { type: "button", className: "sui-chat-starter-btn", onClick: () => onPick(s), children: [
-      /* @__PURE__ */ jsx2(Icon, { className: "sui-chat-icon" }),
-      /* @__PURE__ */ jsx2("span", { children: s.label })
-    ] }, s.id);
+    return /* @__PURE__ */ jsxs2(
+      "button",
+      {
+        type: "button",
+        className: "sui-chat-starter-btn",
+        onClick: () => onPick(s),
+        onMouseEnter: () => onPreview(s.question),
+        onMouseLeave: () => onPreview(""),
+        onFocus: () => onPreview(s.question),
+        onBlur: () => onPreview(""),
+        children: [
+          /* @__PURE__ */ jsx2(Icon, { className: "sui-chat-icon" }),
+          /* @__PURE__ */ jsx2("span", { children: s.label })
+        ]
+      },
+      s.id
+    );
   }) });
 }
 function Message({ role, content, chunks, streaming, strings, moreInfoHrefPattern }) {
@@ -288,6 +301,7 @@ function ChatInterface({
   const pendingExtraPromptRef = useRef("");
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
+  const [previewQuestion, setPreviewQuestion] = useState("");
   const [streaming, setStreaming] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -402,6 +416,7 @@ function ChatInterface({
   }, [input, sendQuery]);
   const handleStarterPick = useCallback((starter) => {
     var _a;
+    setPreviewQuestion("");
     if (autoSendStarters) {
       sendQuery(starter.question, starter.extraPrompt);
     } else {
@@ -458,7 +473,7 @@ function ChatInterface({
           strings.inputLabel,
           "\u2026"
         ] }),
-        /* @__PURE__ */ jsx2(StarterButtons, { starters, onPick: handleStarterPick })
+        /* @__PURE__ */ jsx2(StarterButtons, { starters, onPick: handleStarterPick, onPreview: setPreviewQuestion })
       ] }),
       messages.map((m, i) => /* @__PURE__ */ jsx2(Message, { ...m, strings, moreInfoHrefPattern }, i)),
       streaming && /* @__PURE__ */ jsx2(Message, { role: "assistant", content: streaming, streaming: true, strings, moreInfoHrefPattern })
@@ -479,7 +494,7 @@ function ChatInterface({
             id: inputId,
             type: "text",
             className: "sui-chat-input",
-            placeholder: placeholder || strings.inputLabel,
+            placeholder: previewQuestion || placeholder || strings.inputLabel,
             value: input,
             onChange: (e) => {
               setInput(e.target.value);

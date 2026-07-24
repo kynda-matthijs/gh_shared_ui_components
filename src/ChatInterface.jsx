@@ -179,7 +179,12 @@ function IntakeForm({ intake, onChange, askName, askAge, askGender, strings, ope
 // module comment on buildIntakeContext's sibling handling in `sendQuery` below).
 // Only shown before the first message, same "welcome screen" convention as the
 // sui-chat-log-hint text it replaces.
-function StarterButtons({ starters, onPick }) {
+// `onPreview` is called with a starter's question on hover/focus (shown as the chat
+// input's placeholder, a ghost preview — never the actual input value) and with ''
+// on hover-out/blur. `onPick` is the real, "finalizing" action on click — unchanged
+// from before, it either sends immediately or fills the input for review, depending
+// on autoSendStarters.
+function StarterButtons({ starters, onPick, onPreview }) {
     // `active` defaults to on for any starter saved before this field existed.
     const visible = (starters ?? []).filter(s => s.active !== false);
     if (!visible.length) return null;
@@ -188,7 +193,12 @@ function StarterButtons({ starters, onPick }) {
             {visible.map(s => {
                 const Icon = STARTER_ICONS[s.icon] ?? MessageCircle;
                 return (
-                    <button key={s.id} type="button" className="sui-chat-starter-btn" onClick={() => onPick(s)}>
+                    <button key={s.id} type="button" className="sui-chat-starter-btn"
+                        onClick={() => onPick(s)}
+                        onMouseEnter={() => onPreview(s.question)}
+                        onMouseLeave={() => onPreview('')}
+                        onFocus={() => onPreview(s.question)}
+                        onBlur={() => onPreview('')}>
                         <Icon className="sui-chat-icon" />
                         <span>{s.label}</span>
                     </button>
@@ -259,6 +269,10 @@ export default function ChatInterface({
     // though it's mounted via client:load).
     const [messages,  setMessages]  = useState([]);
     const [input,     setInput]     = useState('');
+    // Hover/focus-only ghost preview of a starter's question, shown as the input's
+    // placeholder — never written into `input` itself. Only "finalized" into a real
+    // value (or sent) by actually clicking the starter, see handleStarterPick.
+    const [previewQuestion, setPreviewQuestion] = useState('');
     const [streaming, setStreaming] = useState('');
     const [pending,   setPending]   = useState(false);
     const [error,     setError]     = useState('');
@@ -378,6 +392,7 @@ export default function ChatInterface({
     }, [input, sendQuery]);
 
     const handleStarterPick = useCallback((starter) => {
+        setPreviewQuestion('');
         if (autoSendStarters) {
             sendQuery(starter.question, starter.extraPrompt);
         } else {
@@ -418,7 +433,7 @@ export default function ChatInterface({
                 {messages.length === 0 && !streaming && (
                     <>
                         <p className="sui-chat-log-hint">{strings.inputLabel}…</p>
-                        <StarterButtons starters={starters} onPick={handleStarterPick} />
+                        <StarterButtons starters={starters} onPick={handleStarterPick} onPreview={setPreviewQuestion} />
                     </>
                 )}
                 {messages.map((m, i) => (
@@ -443,7 +458,7 @@ export default function ChatInterface({
                         id={inputId}
                         type="text"
                         className="sui-chat-input"
-                        placeholder={placeholder || strings.inputLabel}
+                        placeholder={previewQuestion || placeholder || strings.inputLabel}
                         value={input}
                         onChange={e => { setInput(e.target.value); pendingExtraPromptRef.current = ''; }}
                         disabled={pending}
