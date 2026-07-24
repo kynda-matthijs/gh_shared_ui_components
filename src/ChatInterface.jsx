@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect, useId } from 'react';
-import { Bot, Send, Phone, Mail, Globe, MapPin, Loader2, AlertCircle, X, Trash2 } from 'lucide-react';
+import { Bot, Send, Loader2, AlertCircle, X, Trash2 } from 'lucide-react';
 import DOMPurify from 'dompurify';
+import ActionButtons, { sanitizeUrl } from './ActionButtons.jsx';
 
 // ChatInterface — shared, presentational chat UI talking directly to a Cloudflare AI
 // Search instance's public endpoint. Used by both:
@@ -26,6 +27,11 @@ const DEFAULT_STRINGS = {
     openChat: 'Open chat', closeChat: 'Close chat', clearChat: 'Clear chat',
     you: 'You', assistant: 'Assistant',
     disclaimer: 'This is an AI assistant. Always double-check important details with the organisation itself.',
+    aboutYouTitle: 'About you (optional)',
+    nameLabel: 'What should we call you?',
+    ageLabel: 'Your age',
+    genderLabel: 'Your gender',
+    intakeNotStored: 'Optional. Never stored.',
 };
 
 // ── Minimal markdown renderer ────────────────────────────────────────────
@@ -35,13 +41,7 @@ const DEFAULT_STRINGS = {
 //     reintroduced afterward via regex substitution, and only around text the model
 //     supplied, never around markup it supplied; and
 // (2) the final HTML is run through DOMPurify as a second, independent safety net.
-const SAFE_ABSOLUTE = /^(https?:|mailto:|tel:)/i;
-function sanitizeUrl(url) {
-    if (!url) return '';
-    const u = String(url).trim();
-    if (/^[a-z][a-z0-9+.-]*:/i.test(u)) return SAFE_ABSOLUTE.test(u) ? u : '';
-    return u; // relative URL — safe, resolves against this origin
-}
+// (sanitizeUrl is imported from ActionButtons.jsx — same function, shared.)
 function escapeHtml(s) {
     return String(s)
         .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -111,41 +111,64 @@ function buildMoreInfoHref(pattern, entityId) {
 function SourceCard({ meta, strings, moreInfoHrefPattern }) {
     let ctx = {};
     try { ctx = JSON.parse(meta.context || '{}'); } catch { /* ignore */ }
-    const safeUrl = sanitizeUrl(ctx.url);
     const infoHref = buildMoreInfoHref(moreInfoHrefPattern, meta.entity_id);
     return (
         <div className="sui-chat-source-card">
             <div className="sui-chat-source-title">{meta.name || ctx.naam || ''}</div>
             {ctx.adres && <div className="sui-chat-source-address">{ctx.adres}</div>}
-            <div className="sui-chat-source-actions">
-                {ctx.tel && (
-                    <a className="sui-chat-action-btn" href={`tel:${ctx.tel.replace(/\s+/g, '')}`}>
-                        <Phone className="sui-chat-icon" /> {strings.call}
-                    </a>
-                )}
-                {ctx.email && (
-                    <a className="sui-chat-action-btn" href={`mailto:${ctx.email}`}>
-                        <Mail className="sui-chat-icon" /> {strings.email}
-                    </a>
-                )}
-                {safeUrl && (
-                    <a className="sui-chat-action-btn" href={safeUrl} target="_blank" rel="noopener noreferrer">
-                        <Globe className="sui-chat-icon" /> {strings.website}
-                    </a>
-                )}
-                {ctx.adres && (
-                    <a className="sui-chat-action-btn"
-                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ctx.adres)}`}
-                        target="_blank" rel="noopener noreferrer">
-                        <MapPin className="sui-chat-icon" /> {strings.route}
-                    </a>
-                )}
-                {infoHref && (
-                    <a className="sui-chat-action-btn sui-chat-action-btn--info" href={infoHref}>
-                        {strings.moreInfo}
-                    </a>
-                )}
-            </div>
+            <ActionButtons tel={ctx.tel} email={ctx.email} url={ctx.url} address={ctx.adres} moreInfoHref={infoHref} strings={strings} />
+        </div>
+    );
+}
+
+// Builds the extra line appended to the client-sent system message (see `send` below) —
+// only mentions fields the person actually filled in; an empty/untouched field is never
+// mentioned at all, since these questions are genuinely optional.
+function buildIntakeContext(intake) {
+    const parts = [];
+    if (intake.name?.trim())   parts.push(`Their name is ${intake.name.trim()} — you may use it to sound warm and personal.`);
+    if (intake.age?.trim())    parts.push(`Their age is ${intake.age.trim()}.`);
+    if (intake.gender?.trim()) parts.push(`Their gender: ${intake.gender.trim()}.`);
+    if (!parts.length) return '';
+    return ` ${parts.join(' ')} Never ask them to confirm or repeat this information back.`;
+}
+
+// Optional pre-chat context (name/age/gender) — every field independently opt-in via
+// props, local component state only (never sessionStorage/persisted, unlike chat
+// history), never blocks sending a message. See buildIntakeContext for how it's used.
+function IntakeForm({ intake, onChange, askName, askAge, askGender, strings, open, onToggle }) {
+    if (!askName && !askAge && !askGender) return null;
+    return (
+        <div className="sui-chat-intake">
+            <button type="button" className="sui-chat-intake-toggle" onClick={onToggle} aria-expanded={open}>
+                {strings.aboutYouTitle}
+            </button>
+            {open && (
+                <div className="sui-chat-intake-fields">
+                    {askName && (
+                        <label className="sui-chat-intake-field">
+                            <span>{strings.nameLabel}</span>
+                            <input type="text" value={intake.name} autoComplete="off"
+                                onChange={e => onChange({ ...intake, name: e.target.value })} />
+                        </label>
+                    )}
+                    {askAge && (
+                        <label className="sui-chat-intake-field">
+                            <span>{strings.ageLabel}</span>
+                            <input type="number" inputMode="numeric" min="0" max="120" value={intake.age} autoComplete="off"
+                                onChange={e => onChange({ ...intake, age: e.target.value })} />
+                        </label>
+                    )}
+                    {askGender && (
+                        <label className="sui-chat-intake-field">
+                            <span>{strings.genderLabel}</span>
+                            <input type="text" value={intake.gender} autoComplete="off"
+                                onChange={e => onChange({ ...intake, gender: e.target.value })} />
+                        </label>
+                    )}
+                    <p className="sui-chat-intake-note">{strings.intakeNotStored}</p>
+                </div>
+            )}
         </div>
     );
 }
@@ -186,11 +209,16 @@ export default function ChatInterface({
     placeholder,
     moreInfoHrefPattern = null,
     persistKey = null,
+    askName = false,
+    askAge = false,
+    askGender = false,
 }) {
     const strings = { ...DEFAULT_STRINGS, ...stringsProp };
     const isBubble = variant === 'chat-bubble';
 
     const [open,      setOpen]      = useState(!isBubble);
+    const [intake,      setIntake]      = useState({ name: '', age: '', gender: '' });
+    const [intakeOpen,  setIntakeOpen]  = useState(true);
     // Starts empty (not from sessionStorage) so server-rendered HTML matches the
     // client's first render — restoring persisted history happens in the effect below,
     // which only runs after hydration, avoiding a hydration mismatch (sessionStorage
@@ -242,6 +270,7 @@ export default function ChatInterface({
         setMessages(nextMessages);
         saveMessages(persistKey, nextMessages);
         setInput('');
+        setIntakeOpen(false);
         setPending(true);
         setStreaming(' ');
         scrollToBottom();
@@ -249,7 +278,7 @@ export default function ChatInterface({
         const apiUrl = `https://${aiSearchId}.search.ai.cloudflare.com/chat/completions`;
         const body = {
             messages: [
-                { role: 'system', content: `Respond in ${languageName}. Keep answers concise and easy to read for someone who may be in a stressful situation.` },
+                { role: 'system', content: `Respond in ${languageName}. Keep answers concise and easy to read for someone who may be in a stressful situation.${buildIntakeContext(intake)}` },
                 ...nextMessages.map(m => ({ role: m.role, content: m.content })),
             ],
             stream: true,
@@ -304,7 +333,7 @@ export default function ChatInterface({
             setPending(false);
             scrollToBottom();
         }
-    }, [input, pending, messages, aiSearchId, languageName, persistKey, strings.error, scrollToBottom]);
+    }, [input, pending, messages, aiSearchId, languageName, persistKey, strings.error, scrollToBottom, intake]);
 
     if (!aiSearchId) return null;
 
@@ -326,6 +355,12 @@ export default function ChatInterface({
                     )}
                 </div>
             </div>
+
+            <IntakeForm
+                intake={intake} onChange={setIntake}
+                askName={askName} askAge={askAge} askGender={askGender}
+                strings={strings} open={intakeOpen} onToggle={() => setIntakeOpen(v => !v)}
+            />
 
             <div className="sui-chat-log" role="log" aria-relevant="additions" ref={logRef}>
                 {messages.length === 0 && !streaming && (

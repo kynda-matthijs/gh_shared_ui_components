@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Image as ImageIcon, User as UserIcon, Folder as FolderIcon } from 'lucide-react';
+import ActionButtons from './ActionButtons.jsx';
 
 // DynamicContentGrid — shared, presentational card-grid + filter bar for the "dynamic
 // content" block. Data fetching (which differs per app: admin uses an authenticated
@@ -72,7 +73,17 @@ function defaultDetailUrl(item, fieldMap, collection) {
     return collection && idOrSlug ? `/${collection}/${idOrSlug}` : '';
 }
 
-function PreviewCard({ item, design, fieldMap, collection, detailUrlBuilder, dateLocale }) {
+// moreInfoUrl is a freeText pattern slot (like detailUrl above), not a field-name slot —
+// its fieldMap value IS the literal pattern string, so it's resolved separately from g().
+function buildMoreInfoUrl(item, fieldMap) {
+    const pattern = fieldMap?.moreInfoUrl ?? '';
+    if (!pattern) return '';
+    return pattern
+        .replace(/\{\{id\}\}/g, String(item.id ?? ''))
+        .replace(/\{\{slug\}\}/g, String(item.slug ?? item.id ?? ''));
+}
+
+function PreviewCard({ item, design, fieldMap, collection, detailUrlBuilder, dateLocale, strings }) {
     const g = (slot) => {
         const field = fieldMap[slot];
         return field ? getByPath(item, field) : '';
@@ -123,6 +134,17 @@ function PreviewCard({ item, design, fieldMap, collection, detailUrlBuilder, dat
                         {g('body') && <p className="sui-dyn-desc">{trunc(g('body'), 100)}</p>}
                     </div>
                 </>
+            );
+        case 'contact-card':
+            return (
+                <div className="sui-dyn-body sui-dyn-body-full">
+                    <h3>{g('heading') || item.name || item.title || '—'}</h3>
+                    <ActionButtons
+                        tel={g('tel')} email={g('email')} url={g('website')} address={g('address')}
+                        moreInfoHref={buildMoreInfoUrl(item, fieldMap)}
+                        strings={strings}
+                    />
+                </div>
             );
         case 'document-card':
             return (
@@ -210,7 +232,10 @@ function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFi
     );
 }
 
-const DEFAULT_STRINGS = { noResults: 'No results found.', all: 'All', clearFilters: '× Clear filters', search: 'Search' };
+const DEFAULT_STRINGS = {
+    noResults: 'No results found.', all: 'All', clearFilters: '× Clear filters', search: 'Search',
+    call: 'Call', email: 'Email', website: 'Website', route: 'Directions', moreInfo: 'More info',
+};
 
 export default function DynamicContentGrid({
     items = [],
@@ -249,11 +274,13 @@ export default function DynamicContentGrid({
             {!loading && !error && displayItems.length > 0 && (
                 <div className="sui-dyn-grid" style={{ '--sui-dyn-cols': Math.min(cols, 4) }}>
                     {displayItems.map(item => {
-                        const href = buildHref(item);
+                        // contact-card renders its own <a> action buttons — never wrap the
+                        // whole card in an outer <a>, that'd nest interactive elements.
+                        const href = cardDesign === 'contact-card' ? '' : buildHref(item);
                         const Wrap = href ? 'a' : 'article';
                         return (
                             <Wrap key={item.id ?? item.name} className={`sui-dyn-card sui-dyn-card-${cardDesign}`} {...(href ? { href } : {})}>
-                                <PreviewCard item={item} design={cardDesign} fieldMap={fieldMap} collection={collection} detailUrlBuilder={detailUrlBuilder} dateLocale={dateLocale} />
+                                <PreviewCard item={item} design={cardDesign} fieldMap={fieldMap} collection={collection} detailUrlBuilder={detailUrlBuilder} dateLocale={dateLocale} strings={strings} />
                             </Wrap>
                         );
                     })}

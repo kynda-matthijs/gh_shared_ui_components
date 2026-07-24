@@ -1,8 +1,56 @@
 // src/ChatInterface.jsx
 import { useState, useRef, useCallback, useEffect, useId } from "react";
-import { Bot, Send, Phone, Mail, Globe, MapPin, Loader2, AlertCircle, X, Trash2 } from "lucide-react";
+import { Bot, Send, Loader2, AlertCircle, X, Trash2 } from "lucide-react";
 import DOMPurify from "dompurify";
+
+// src/ActionButtons.jsx
+import { Phone, Mail, Globe, MapPin } from "lucide-react";
 import { jsx, jsxs } from "react/jsx-runtime";
+var SAFE_ABSOLUTE = /^(https?:|mailto:|tel:)/i;
+function sanitizeUrl(url) {
+  if (!url) return "";
+  const u = String(url).trim();
+  if (/^[a-z][a-z0-9+.-]*:/i.test(u)) return SAFE_ABSOLUTE.test(u) ? u : "";
+  return u;
+}
+function ActionButtons({ tel, email, url, address, moreInfoHref, strings }) {
+  const safeUrl = sanitizeUrl(url);
+  return /* @__PURE__ */ jsxs("div", { className: "sui-action-btns", children: [
+    tel && /* @__PURE__ */ jsxs("a", { className: "sui-action-btn", href: `tel:${String(tel).replace(/\s+/g, "")}`, children: [
+      /* @__PURE__ */ jsx(Phone, { className: "sui-chat-icon" }),
+      " ",
+      strings.call
+    ] }),
+    email && /* @__PURE__ */ jsxs("a", { className: "sui-action-btn", href: `mailto:${email}`, children: [
+      /* @__PURE__ */ jsx(Mail, { className: "sui-chat-icon" }),
+      " ",
+      strings.email
+    ] }),
+    safeUrl && /* @__PURE__ */ jsxs("a", { className: "sui-action-btn", href: safeUrl, target: "_blank", rel: "noopener noreferrer", children: [
+      /* @__PURE__ */ jsx(Globe, { className: "sui-chat-icon" }),
+      " ",
+      strings.website
+    ] }),
+    address && /* @__PURE__ */ jsxs(
+      "a",
+      {
+        className: "sui-action-btn",
+        href: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`,
+        target: "_blank",
+        rel: "noopener noreferrer",
+        children: [
+          /* @__PURE__ */ jsx(MapPin, { className: "sui-chat-icon" }),
+          " ",
+          strings.route
+        ]
+      }
+    ),
+    moreInfoHref && /* @__PURE__ */ jsx("a", { className: "sui-action-btn sui-action-btn--info", href: moreInfoHref, children: strings.moreInfo })
+  ] });
+}
+
+// src/ChatInterface.jsx
+import { jsx as jsx2, jsxs as jsxs2 } from "react/jsx-runtime";
 var PUBLIC_FILTER = { folder: { $gte: "public/", $lt: "public0" } };
 var DEFAULT_STRINGS = {
   title: "Ask your question",
@@ -22,15 +70,13 @@ var DEFAULT_STRINGS = {
   clearChat: "Clear chat",
   you: "You",
   assistant: "Assistant",
-  disclaimer: "This is an AI assistant. Always double-check important details with the organisation itself."
+  disclaimer: "This is an AI assistant. Always double-check important details with the organisation itself.",
+  aboutYouTitle: "About you (optional)",
+  nameLabel: "What should we call you?",
+  ageLabel: "Your age",
+  genderLabel: "Your gender",
+  intakeNotStored: "Optional. Never stored."
 };
-var SAFE_ABSOLUTE = /^(https?:|mailto:|tel:)/i;
-function sanitizeUrl(url) {
-  if (!url) return "";
-  const u = String(url).trim();
-  if (/^[a-z][a-z0-9+.-]*:/i.test(u)) return SAFE_ABSOLUTE.test(u) ? u : "";
-  return u;
-}
 function escapeHtml(s) {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
@@ -95,55 +141,80 @@ function SourceCard({ meta, strings, moreInfoHrefPattern }) {
     ctx = JSON.parse(meta.context || "{}");
   } catch {
   }
-  const safeUrl = sanitizeUrl(ctx.url);
   const infoHref = buildMoreInfoHref(moreInfoHrefPattern, meta.entity_id);
-  return /* @__PURE__ */ jsxs("div", { className: "sui-chat-source-card", children: [
-    /* @__PURE__ */ jsx("div", { className: "sui-chat-source-title", children: meta.name || ctx.naam || "" }),
-    ctx.adres && /* @__PURE__ */ jsx("div", { className: "sui-chat-source-address", children: ctx.adres }),
-    /* @__PURE__ */ jsxs("div", { className: "sui-chat-source-actions", children: [
-      ctx.tel && /* @__PURE__ */ jsxs("a", { className: "sui-chat-action-btn", href: `tel:${ctx.tel.replace(/\s+/g, "")}`, children: [
-        /* @__PURE__ */ jsx(Phone, { className: "sui-chat-icon" }),
-        " ",
-        strings.call
+  return /* @__PURE__ */ jsxs2("div", { className: "sui-chat-source-card", children: [
+    /* @__PURE__ */ jsx2("div", { className: "sui-chat-source-title", children: meta.name || ctx.naam || "" }),
+    ctx.adres && /* @__PURE__ */ jsx2("div", { className: "sui-chat-source-address", children: ctx.adres }),
+    /* @__PURE__ */ jsx2(ActionButtons, { tel: ctx.tel, email: ctx.email, url: ctx.url, address: ctx.adres, moreInfoHref: infoHref, strings })
+  ] });
+}
+function buildIntakeContext(intake) {
+  var _a, _b, _c;
+  const parts = [];
+  if ((_a = intake.name) == null ? void 0 : _a.trim()) parts.push(`Their name is ${intake.name.trim()} \u2014 you may use it to sound warm and personal.`);
+  if ((_b = intake.age) == null ? void 0 : _b.trim()) parts.push(`Their age is ${intake.age.trim()}.`);
+  if ((_c = intake.gender) == null ? void 0 : _c.trim()) parts.push(`Their gender: ${intake.gender.trim()}.`);
+  if (!parts.length) return "";
+  return ` ${parts.join(" ")} Never ask them to confirm or repeat this information back.`;
+}
+function IntakeForm({ intake, onChange, askName, askAge, askGender, strings, open, onToggle }) {
+  if (!askName && !askAge && !askGender) return null;
+  return /* @__PURE__ */ jsxs2("div", { className: "sui-chat-intake", children: [
+    /* @__PURE__ */ jsx2("button", { type: "button", className: "sui-chat-intake-toggle", onClick: onToggle, "aria-expanded": open, children: strings.aboutYouTitle }),
+    open && /* @__PURE__ */ jsxs2("div", { className: "sui-chat-intake-fields", children: [
+      askName && /* @__PURE__ */ jsxs2("label", { className: "sui-chat-intake-field", children: [
+        /* @__PURE__ */ jsx2("span", { children: strings.nameLabel }),
+        /* @__PURE__ */ jsx2(
+          "input",
+          {
+            type: "text",
+            value: intake.name,
+            autoComplete: "off",
+            onChange: (e) => onChange({ ...intake, name: e.target.value })
+          }
+        )
       ] }),
-      ctx.email && /* @__PURE__ */ jsxs("a", { className: "sui-chat-action-btn", href: `mailto:${ctx.email}`, children: [
-        /* @__PURE__ */ jsx(Mail, { className: "sui-chat-icon" }),
-        " ",
-        strings.email
+      askAge && /* @__PURE__ */ jsxs2("label", { className: "sui-chat-intake-field", children: [
+        /* @__PURE__ */ jsx2("span", { children: strings.ageLabel }),
+        /* @__PURE__ */ jsx2(
+          "input",
+          {
+            type: "number",
+            inputMode: "numeric",
+            min: "0",
+            max: "120",
+            value: intake.age,
+            autoComplete: "off",
+            onChange: (e) => onChange({ ...intake, age: e.target.value })
+          }
+        )
       ] }),
-      safeUrl && /* @__PURE__ */ jsxs("a", { className: "sui-chat-action-btn", href: safeUrl, target: "_blank", rel: "noopener noreferrer", children: [
-        /* @__PURE__ */ jsx(Globe, { className: "sui-chat-icon" }),
-        " ",
-        strings.website
+      askGender && /* @__PURE__ */ jsxs2("label", { className: "sui-chat-intake-field", children: [
+        /* @__PURE__ */ jsx2("span", { children: strings.genderLabel }),
+        /* @__PURE__ */ jsx2(
+          "input",
+          {
+            type: "text",
+            value: intake.gender,
+            autoComplete: "off",
+            onChange: (e) => onChange({ ...intake, gender: e.target.value })
+          }
+        )
       ] }),
-      ctx.adres && /* @__PURE__ */ jsxs(
-        "a",
-        {
-          className: "sui-chat-action-btn",
-          href: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ctx.adres)}`,
-          target: "_blank",
-          rel: "noopener noreferrer",
-          children: [
-            /* @__PURE__ */ jsx(MapPin, { className: "sui-chat-icon" }),
-            " ",
-            strings.route
-          ]
-        }
-      ),
-      infoHref && /* @__PURE__ */ jsx("a", { className: "sui-chat-action-btn sui-chat-action-btn--info", href: infoHref, children: strings.moreInfo })
+      /* @__PURE__ */ jsx2("p", { className: "sui-chat-intake-note", children: strings.intakeNotStored })
     ] })
   ] });
 }
 function Message({ role, content, chunks, streaming, strings, moreInfoHrefPattern }) {
   const sources = role === "assistant" ? dedupeSources(chunks) : [];
-  return /* @__PURE__ */ jsxs("div", { className: `sui-chat-msg sui-chat-msg--${role}`, children: [
-    /* @__PURE__ */ jsx("span", { className: "sui-chat-msg-label", children: role === "user" ? strings.you : strings.assistant }),
-    /* @__PURE__ */ jsxs("div", { className: "sui-chat-msg-bubble", "aria-live": role === "assistant" ? "polite" : void 0, children: [
-      role === "user" ? /* @__PURE__ */ jsx("div", { className: "sui-chat-msg-text", children: content }) : /* @__PURE__ */ jsx("div", { className: "sui-chat-msg-text", dangerouslySetInnerHTML: { __html: renderMarkdown(content) } }),
-      streaming && /* @__PURE__ */ jsx("span", { className: "sui-chat-cursor", "aria-hidden": "true" }),
-      sources.length > 0 && /* @__PURE__ */ jsxs("div", { className: "sui-chat-sources", children: [
-        /* @__PURE__ */ jsx("h4", { className: "sui-chat-sources-heading", children: strings.relatedHelp }),
-        /* @__PURE__ */ jsx("div", { className: "sui-chat-sources-grid", children: sources.map((s) => /* @__PURE__ */ jsx(SourceCard, { meta: s.meta, strings, moreInfoHrefPattern }, s.meta.entity_id)) })
+  return /* @__PURE__ */ jsxs2("div", { className: `sui-chat-msg sui-chat-msg--${role}`, children: [
+    /* @__PURE__ */ jsx2("span", { className: "sui-chat-msg-label", children: role === "user" ? strings.you : strings.assistant }),
+    /* @__PURE__ */ jsxs2("div", { className: "sui-chat-msg-bubble", "aria-live": role === "assistant" ? "polite" : void 0, children: [
+      role === "user" ? /* @__PURE__ */ jsx2("div", { className: "sui-chat-msg-text", children: content }) : /* @__PURE__ */ jsx2("div", { className: "sui-chat-msg-text", dangerouslySetInnerHTML: { __html: renderMarkdown(content) } }),
+      streaming && /* @__PURE__ */ jsx2("span", { className: "sui-chat-cursor", "aria-hidden": "true" }),
+      sources.length > 0 && /* @__PURE__ */ jsxs2("div", { className: "sui-chat-sources", children: [
+        /* @__PURE__ */ jsx2("h4", { className: "sui-chat-sources-heading", children: strings.relatedHelp }),
+        /* @__PURE__ */ jsx2("div", { className: "sui-chat-sources-grid", children: sources.map((s) => /* @__PURE__ */ jsx2(SourceCard, { meta: s.meta, strings, moreInfoHrefPattern }, s.meta.entity_id)) })
       ] })
     ] })
   ] });
@@ -156,11 +227,16 @@ function ChatInterface({
   dir = "ltr",
   placeholder,
   moreInfoHrefPattern = null,
-  persistKey = null
+  persistKey = null,
+  askName = false,
+  askAge = false,
+  askGender = false
 }) {
   const strings = { ...DEFAULT_STRINGS, ...stringsProp };
   const isBubble = variant === "chat-bubble";
   const [open, setOpen] = useState(!isBubble);
+  const [intake, setIntake] = useState({ name: "", age: "", gender: "" });
+  const [intakeOpen, setIntakeOpen] = useState(true);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState("");
@@ -205,13 +281,14 @@ function ChatInterface({
     setMessages(nextMessages);
     saveMessages(persistKey, nextMessages);
     setInput("");
+    setIntakeOpen(false);
     setPending(true);
     setStreaming(" ");
     scrollToBottom();
     const apiUrl = `https://${aiSearchId}.search.ai.cloudflare.com/chat/completions`;
     const body = {
       messages: [
-        { role: "system", content: `Respond in ${languageName}. Keep answers concise and easy to read for someone who may be in a stressful situation.` },
+        { role: "system", content: `Respond in ${languageName}. Keep answers concise and easy to read for someone who may be in a stressful situation.${buildIntakeContext(intake)}` },
         ...nextMessages.map((m) => ({ role: m.role, content: m.content }))
       ],
       stream: true,
@@ -268,14 +345,14 @@ function ChatInterface({
       setPending(false);
       scrollToBottom();
     }
-  }, [input, pending, messages, aiSearchId, languageName, persistKey, strings.error, scrollToBottom]);
+  }, [input, pending, messages, aiSearchId, languageName, persistKey, strings.error, scrollToBottom, intake]);
   if (!aiSearchId) return null;
-  const panel = /* @__PURE__ */ jsxs("div", { className: "sui-chat-panel", children: [
-    /* @__PURE__ */ jsxs("div", { className: "sui-chat-header", children: [
-      /* @__PURE__ */ jsx(Bot, { className: "sui-chat-icon" }),
-      /* @__PURE__ */ jsx("span", { className: "sui-chat-header-title", children: strings.title }),
-      /* @__PURE__ */ jsxs("div", { className: "sui-chat-header-actions", children: [
-        /* @__PURE__ */ jsx(
+  const panel = /* @__PURE__ */ jsxs2("div", { className: "sui-chat-panel", children: [
+    /* @__PURE__ */ jsxs2("div", { className: "sui-chat-header", children: [
+      /* @__PURE__ */ jsx2(Bot, { className: "sui-chat-icon" }),
+      /* @__PURE__ */ jsx2("span", { className: "sui-chat-header-title", children: strings.title }),
+      /* @__PURE__ */ jsxs2("div", { className: "sui-chat-header-actions", children: [
+        /* @__PURE__ */ jsx2(
           "button",
           {
             type: "button",
@@ -283,38 +360,51 @@ function ChatInterface({
             onClick: clearChat,
             "aria-label": strings.clearChat,
             title: strings.clearChat,
-            children: /* @__PURE__ */ jsx(Trash2, { className: "sui-chat-icon-sm" })
+            children: /* @__PURE__ */ jsx2(Trash2, { className: "sui-chat-icon-sm" })
           }
         ),
-        isBubble && /* @__PURE__ */ jsx(
+        isBubble && /* @__PURE__ */ jsx2(
           "button",
           {
             type: "button",
             className: "sui-chat-close-btn",
             onClick: () => setOpen(false),
             "aria-label": strings.closeChat,
-            children: /* @__PURE__ */ jsx(X, { className: "sui-chat-icon-sm" })
+            children: /* @__PURE__ */ jsx2(X, { className: "sui-chat-icon-sm" })
           }
         )
       ] })
     ] }),
-    /* @__PURE__ */ jsxs("div", { className: "sui-chat-log", role: "log", "aria-relevant": "additions", ref: logRef, children: [
-      messages.length === 0 && !streaming && /* @__PURE__ */ jsxs("p", { className: "sui-chat-log-hint", children: [
+    /* @__PURE__ */ jsx2(
+      IntakeForm,
+      {
+        intake,
+        onChange: setIntake,
+        askName,
+        askAge,
+        askGender,
+        strings,
+        open: intakeOpen,
+        onToggle: () => setIntakeOpen((v) => !v)
+      }
+    ),
+    /* @__PURE__ */ jsxs2("div", { className: "sui-chat-log", role: "log", "aria-relevant": "additions", ref: logRef, children: [
+      messages.length === 0 && !streaming && /* @__PURE__ */ jsxs2("p", { className: "sui-chat-log-hint", children: [
         strings.inputLabel,
         "\u2026"
       ] }),
-      messages.map((m, i) => /* @__PURE__ */ jsx(Message, { ...m, strings, moreInfoHrefPattern }, i)),
-      streaming && /* @__PURE__ */ jsx(Message, { role: "assistant", content: streaming, streaming: true, strings, moreInfoHrefPattern })
+      messages.map((m, i) => /* @__PURE__ */ jsx2(Message, { ...m, strings, moreInfoHrefPattern }, i)),
+      streaming && /* @__PURE__ */ jsx2(Message, { role: "assistant", content: streaming, streaming: true, strings, moreInfoHrefPattern })
     ] }),
-    /* @__PURE__ */ jsx("div", { className: "sui-chat-status", role: "status", "aria-live": "polite", children: pending && !error ? strings.thinking : "" }),
-    error && /* @__PURE__ */ jsxs("p", { className: "sui-chat-error", children: [
-      /* @__PURE__ */ jsx(AlertCircle, { className: "sui-chat-icon-sm" }),
+    /* @__PURE__ */ jsx2("div", { className: "sui-chat-status", role: "status", "aria-live": "polite", children: pending && !error ? strings.thinking : "" }),
+    error && /* @__PURE__ */ jsxs2("p", { className: "sui-chat-error", children: [
+      /* @__PURE__ */ jsx2(AlertCircle, { className: "sui-chat-icon-sm" }),
       " ",
       error
     ] }),
-    /* @__PURE__ */ jsxs("form", { className: "sui-chat-form", onSubmit: send, children: [
-      /* @__PURE__ */ jsx("label", { className: "sui-chat-sr-only", htmlFor: inputId, children: strings.inputLabel }),
-      /* @__PURE__ */ jsx(
+    /* @__PURE__ */ jsxs2("form", { className: "sui-chat-form", onSubmit: send, children: [
+      /* @__PURE__ */ jsx2("label", { className: "sui-chat-sr-only", htmlFor: inputId, children: strings.inputLabel }),
+      /* @__PURE__ */ jsx2(
         "input",
         {
           ref: inputRef,
@@ -328,14 +418,14 @@ function ChatInterface({
           autoComplete: "off"
         }
       ),
-      /* @__PURE__ */ jsx("button", { type: "submit", className: "sui-chat-send-btn", disabled: pending || !input.trim(), "aria-label": strings.send, children: pending ? /* @__PURE__ */ jsx(Loader2, { className: "sui-chat-icon sui-chat-spin" }) : /* @__PURE__ */ jsx(Send, { className: "sui-chat-icon" }) })
+      /* @__PURE__ */ jsx2("button", { type: "submit", className: "sui-chat-send-btn", disabled: pending || !input.trim(), "aria-label": strings.send, children: pending ? /* @__PURE__ */ jsx2(Loader2, { className: "sui-chat-icon sui-chat-spin" }) : /* @__PURE__ */ jsx2(Send, { className: "sui-chat-icon" }) })
     ] }),
-    /* @__PURE__ */ jsx("p", { className: "sui-chat-disclaimer", children: strings.disclaimer })
+    /* @__PURE__ */ jsx2("p", { className: "sui-chat-disclaimer", children: strings.disclaimer })
   ] });
   if (!isBubble) {
-    return /* @__PURE__ */ jsx("section", { className: "sui-chat-widget sui-chat-widget--chat-page", dir, children: panel });
+    return /* @__PURE__ */ jsx2("section", { className: "sui-chat-widget sui-chat-widget--chat-page", dir, children: panel });
   }
-  return /* @__PURE__ */ jsx("section", { className: "sui-chat-widget sui-chat-widget--chat-bubble", dir, children: open ? panel : /* @__PURE__ */ jsx(
+  return /* @__PURE__ */ jsx2("section", { className: "sui-chat-widget sui-chat-widget--chat-bubble", dir, children: open ? panel : /* @__PURE__ */ jsx2(
     "button",
     {
       ref: toggleRef,
@@ -344,7 +434,7 @@ function ChatInterface({
       "aria-expanded": open,
       "aria-label": strings.openChat,
       onClick: () => setOpen(true),
-      children: /* @__PURE__ */ jsx(Bot, { className: "sui-chat-icon-lg" })
+      children: /* @__PURE__ */ jsx2(Bot, { className: "sui-chat-icon-lg" })
     }
   ) });
 }
@@ -352,7 +442,7 @@ function ChatInterface({
 // src/DynamicContentGrid.jsx
 import { useState as useState2 } from "react";
 import { Image as ImageIcon, User as UserIcon, Folder as FolderIcon } from "lucide-react";
-import { Fragment, jsx as jsx2, jsxs as jsxs2 } from "react/jsx-runtime";
+import { Fragment, jsx as jsx3, jsxs as jsxs3 } from "react/jsx-runtime";
 function trunc(s, n = 120) {
   const str = String(s ?? "");
   return str.length > n ? str.slice(0, n) + "\u2026" : str;
@@ -397,11 +487,11 @@ function applyUserFilters(baseItems, activeFilters, searchTerm, filterBar) {
   return result;
 }
 function Badge({ value }) {
-  return value ? /* @__PURE__ */ jsx2("span", { className: "sui-dyn-badge", children: value }) : null;
+  return value ? /* @__PURE__ */ jsx3("span", { className: "sui-dyn-badge", children: value }) : null;
 }
 function CardImage({ src }) {
-  if (src) return /* @__PURE__ */ jsx2("img", { src, alt: "", loading: "lazy" });
-  return /* @__PURE__ */ jsx2("div", { className: "sui-dyn-img-placeholder", children: /* @__PURE__ */ jsx2(ImageIcon, { className: "sui-dyn-icon" }) });
+  if (src) return /* @__PURE__ */ jsx3("img", { src, alt: "", loading: "lazy" });
+  return /* @__PURE__ */ jsx3("div", { className: "sui-dyn-img-placeholder", children: /* @__PURE__ */ jsx3(ImageIcon, { className: "sui-dyn-icon" }) });
 }
 function defaultDetailUrl(item, fieldMap, collection) {
   const pattern = (fieldMap == null ? void 0 : fieldMap.detailUrl) ?? "";
@@ -411,59 +501,79 @@ function defaultDetailUrl(item, fieldMap, collection) {
   const idOrSlug = item.slug ?? item.id;
   return collection && idOrSlug ? `/${collection}/${idOrSlug}` : "";
 }
-function PreviewCard({ item, design, fieldMap, collection, detailUrlBuilder, dateLocale }) {
+function buildMoreInfoUrl(item, fieldMap) {
+  const pattern = (fieldMap == null ? void 0 : fieldMap.moreInfoUrl) ?? "";
+  if (!pattern) return "";
+  return pattern.replace(/\{\{id\}\}/g, String(item.id ?? "")).replace(/\{\{slug\}\}/g, String(item.slug ?? item.id ?? ""));
+}
+function PreviewCard({ item, design, fieldMap, collection, detailUrlBuilder, dateLocale, strings }) {
   const g = (slot) => {
     const field = fieldMap[slot];
     return field ? getByPath(item, field) : "";
   };
   switch (design) {
     case "image-card":
-      return /* @__PURE__ */ jsxs2(Fragment, { children: [
-        /* @__PURE__ */ jsx2("div", { className: "sui-dyn-img", children: /* @__PURE__ */ jsx2(CardImage, { src: g("image") }) }),
-        /* @__PURE__ */ jsxs2("div", { className: "sui-dyn-body", children: [
-          /* @__PURE__ */ jsx2(Badge, { value: g("badge") }),
-          /* @__PURE__ */ jsx2("h3", { children: g("heading") || item.name || item.title || "\u2014" }),
-          g("subheading") && /* @__PURE__ */ jsx2("p", { className: "sui-dyn-sub", children: String(g("subheading")) }),
-          g("body") && /* @__PURE__ */ jsx2("p", { className: "sui-dyn-desc", children: trunc(g("body")) })
+      return /* @__PURE__ */ jsxs3(Fragment, { children: [
+        /* @__PURE__ */ jsx3("div", { className: "sui-dyn-img", children: /* @__PURE__ */ jsx3(CardImage, { src: g("image") }) }),
+        /* @__PURE__ */ jsxs3("div", { className: "sui-dyn-body", children: [
+          /* @__PURE__ */ jsx3(Badge, { value: g("badge") }),
+          /* @__PURE__ */ jsx3("h3", { children: g("heading") || item.name || item.title || "\u2014" }),
+          g("subheading") && /* @__PURE__ */ jsx3("p", { className: "sui-dyn-sub", children: String(g("subheading")) }),
+          g("body") && /* @__PURE__ */ jsx3("p", { className: "sui-dyn-desc", children: trunc(g("body")) })
         ] })
       ] });
     case "compact-card":
-      return /* @__PURE__ */ jsxs2("div", { className: "sui-dyn-body sui-dyn-body-full", children: [
-        /* @__PURE__ */ jsx2("h3", { children: g("heading") || item.name || item.title || "\u2014" }),
-        g("subheading") && /* @__PURE__ */ jsx2("p", { className: "sui-dyn-sub", children: String(g("subheading")) }),
-        g("body") && /* @__PURE__ */ jsx2("p", { className: "sui-dyn-desc", children: trunc(g("body"), 100) }),
-        g("date") && /* @__PURE__ */ jsx2("p", { className: "sui-dyn-date", children: fmtDate(g("date"), dateLocale) })
+      return /* @__PURE__ */ jsxs3("div", { className: "sui-dyn-body sui-dyn-body-full", children: [
+        /* @__PURE__ */ jsx3("h3", { children: g("heading") || item.name || item.title || "\u2014" }),
+        g("subheading") && /* @__PURE__ */ jsx3("p", { className: "sui-dyn-sub", children: String(g("subheading")) }),
+        g("body") && /* @__PURE__ */ jsx3("p", { className: "sui-dyn-desc", children: trunc(g("body"), 100) }),
+        g("date") && /* @__PURE__ */ jsx3("p", { className: "sui-dyn-date", children: fmtDate(g("date"), dateLocale) })
       ] });
     case "stat-card":
-      return /* @__PURE__ */ jsxs2("div", { className: "sui-dyn-body sui-dyn-stat-body", children: [
-        /* @__PURE__ */ jsx2("p", { className: "sui-dyn-stat-label", children: g("heading") || item.name || "\u2014" }),
-        /* @__PURE__ */ jsx2("p", { className: "sui-dyn-stat-value", children: String(g("number") || "\u2014") }),
-        g("subheading") && /* @__PURE__ */ jsx2("p", { className: "sui-dyn-sub", children: String(g("subheading")) }),
-        /* @__PURE__ */ jsx2(Badge, { value: g("badge") })
+      return /* @__PURE__ */ jsxs3("div", { className: "sui-dyn-body sui-dyn-stat-body", children: [
+        /* @__PURE__ */ jsx3("p", { className: "sui-dyn-stat-label", children: g("heading") || item.name || "\u2014" }),
+        /* @__PURE__ */ jsx3("p", { className: "sui-dyn-stat-value", children: String(g("number") || "\u2014") }),
+        g("subheading") && /* @__PURE__ */ jsx3("p", { className: "sui-dyn-sub", children: String(g("subheading")) }),
+        /* @__PURE__ */ jsx3(Badge, { value: g("badge") })
       ] });
     case "person-card":
-      return /* @__PURE__ */ jsxs2(Fragment, { children: [
-        /* @__PURE__ */ jsx2("div", { className: "sui-dyn-avatar-wrap", children: g("image") ? /* @__PURE__ */ jsx2("img", { src: String(g("image")), className: "sui-dyn-avatar", alt: "" }) : /* @__PURE__ */ jsx2("div", { className: "sui-dyn-avatar-placeholder", children: /* @__PURE__ */ jsx2(UserIcon, { className: "sui-dyn-icon" }) }) }),
-        /* @__PURE__ */ jsxs2("div", { className: "sui-dyn-body sui-dyn-person-body", children: [
-          /* @__PURE__ */ jsx2("h3", { children: g("heading") || item.name || "\u2014" }),
-          g("subheading") && /* @__PURE__ */ jsx2("p", { className: "sui-dyn-sub", children: String(g("subheading")) }),
-          g("body") && /* @__PURE__ */ jsx2("p", { className: "sui-dyn-desc", children: trunc(g("body"), 100) })
+      return /* @__PURE__ */ jsxs3(Fragment, { children: [
+        /* @__PURE__ */ jsx3("div", { className: "sui-dyn-avatar-wrap", children: g("image") ? /* @__PURE__ */ jsx3("img", { src: String(g("image")), className: "sui-dyn-avatar", alt: "" }) : /* @__PURE__ */ jsx3("div", { className: "sui-dyn-avatar-placeholder", children: /* @__PURE__ */ jsx3(UserIcon, { className: "sui-dyn-icon" }) }) }),
+        /* @__PURE__ */ jsxs3("div", { className: "sui-dyn-body sui-dyn-person-body", children: [
+          /* @__PURE__ */ jsx3("h3", { children: g("heading") || item.name || "\u2014" }),
+          g("subheading") && /* @__PURE__ */ jsx3("p", { className: "sui-dyn-sub", children: String(g("subheading")) }),
+          g("body") && /* @__PURE__ */ jsx3("p", { className: "sui-dyn-desc", children: trunc(g("body"), 100) })
         ] })
       ] });
+    case "contact-card":
+      return /* @__PURE__ */ jsxs3("div", { className: "sui-dyn-body sui-dyn-body-full", children: [
+        /* @__PURE__ */ jsx3("h3", { children: g("heading") || item.name || item.title || "\u2014" }),
+        /* @__PURE__ */ jsx3(
+          ActionButtons,
+          {
+            tel: g("tel"),
+            email: g("email"),
+            url: g("website"),
+            address: g("address"),
+            moreInfoHref: buildMoreInfoUrl(item, fieldMap),
+            strings
+          }
+        )
+      ] });
     case "document-card":
-      return /* @__PURE__ */ jsxs2(Fragment, { children: [
-        /* @__PURE__ */ jsx2("div", { className: "sui-dyn-doc-icon", children: /* @__PURE__ */ jsx2(FolderIcon, { className: "sui-dyn-icon" }) }),
-        /* @__PURE__ */ jsxs2("div", { className: "sui-dyn-body sui-dyn-body-full", children: [
-          /* @__PURE__ */ jsx2("h3", { children: g("heading") || item.name || item.title || "\u2014" }),
-          /* @__PURE__ */ jsxs2("div", { className: "sui-dyn-doc-meta", children: [
-            /* @__PURE__ */ jsx2(Badge, { value: g("badge") }),
-            g("date") && /* @__PURE__ */ jsx2("span", { className: "sui-dyn-date", children: fmtDate(g("date"), dateLocale) })
+      return /* @__PURE__ */ jsxs3(Fragment, { children: [
+        /* @__PURE__ */ jsx3("div", { className: "sui-dyn-doc-icon", children: /* @__PURE__ */ jsx3(FolderIcon, { className: "sui-dyn-icon" }) }),
+        /* @__PURE__ */ jsxs3("div", { className: "sui-dyn-body sui-dyn-body-full", children: [
+          /* @__PURE__ */ jsx3("h3", { children: g("heading") || item.name || item.title || "\u2014" }),
+          /* @__PURE__ */ jsxs3("div", { className: "sui-dyn-doc-meta", children: [
+            /* @__PURE__ */ jsx3(Badge, { value: g("badge") }),
+            g("date") && /* @__PURE__ */ jsx3("span", { className: "sui-dyn-date", children: fmtDate(g("date"), dateLocale) })
           ] }),
-          g("body") && /* @__PURE__ */ jsx2("p", { className: "sui-dyn-desc", children: trunc(g("body"), 100) })
+          g("body") && /* @__PURE__ */ jsx3("p", { className: "sui-dyn-desc", children: trunc(g("body"), 100) })
         ] })
       ] });
     default:
-      return /* @__PURE__ */ jsx2("div", { className: "sui-dyn-body sui-dyn-body-full", children: /* @__PURE__ */ jsx2("h3", { children: item.name ?? item.title ?? String(item.id ?? "\u2014") }) });
+      return /* @__PURE__ */ jsx3("div", { className: "sui-dyn-body sui-dyn-body-full", children: /* @__PURE__ */ jsx3("h3", { children: item.name ?? item.title ?? String(item.id ?? "\u2014") }) });
   }
 }
 function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFilters, setSearchTerm, strings }) {
@@ -471,8 +581,8 @@ function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFi
   const hasSearch = fb.searchEnabled;
   const sortedFilters = (fb.filters ?? []).filter((f) => f.field).slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   if (!hasSearch && sortedFilters.length === 0) return null;
-  return /* @__PURE__ */ jsxs2("div", { className: `sui-dyn-filterbar sui-dyn-filterbar--${fb.layout ?? "horizontal"}`, children: [
-    hasSearch && /* @__PURE__ */ jsx2("div", { className: "sui-dyn-filter-group", children: /* @__PURE__ */ jsx2(
+  return /* @__PURE__ */ jsxs3("div", { className: `sui-dyn-filterbar sui-dyn-filterbar--${fb.layout ?? "horizontal"}`, children: [
+    hasSearch && /* @__PURE__ */ jsx3("div", { className: "sui-dyn-filter-group", children: /* @__PURE__ */ jsx3(
       "input",
       {
         type: "search",
@@ -487,24 +597,24 @@ function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFi
       if (options.length <= 1) return null;
       const selected = activeFilters[filterDef.field] ?? [];
       const label = filterDef.label || filterDef.field;
-      return /* @__PURE__ */ jsxs2("div", { className: "sui-dyn-filter-group", children: [
-        /* @__PURE__ */ jsx2("span", { className: "sui-dyn-filter-label", children: label }),
-        filterDef.type === "select" ? /* @__PURE__ */ jsxs2(
+      return /* @__PURE__ */ jsxs3("div", { className: "sui-dyn-filter-group", children: [
+        /* @__PURE__ */ jsx3("span", { className: "sui-dyn-filter-label", children: label }),
+        filterDef.type === "select" ? /* @__PURE__ */ jsxs3(
           "select",
           {
             className: "sui-dyn-filter-select",
             value: selected[0] ?? "",
             onChange: (e) => setActiveFilters((prev) => ({ ...prev, [filterDef.field]: e.target.value ? [e.target.value] : [] })),
             children: [
-              /* @__PURE__ */ jsx2("option", { value: "", children: strings.all }),
-              options.map((o) => /* @__PURE__ */ jsxs2("option", { value: o.value, children: [
+              /* @__PURE__ */ jsx3("option", { value: "", children: strings.all }),
+              options.map((o) => /* @__PURE__ */ jsxs3("option", { value: o.value, children: [
                 o.value,
                 filterDef.showCount ? ` (${o.count})` : ""
               ] }, o.value))
             ]
           }
-        ) : /* @__PURE__ */ jsx2("div", { className: `sui-dyn-filter-options sui-dyn-filter-options--${filterDef.type ?? "checkbox"}`, children: options.map((o) => /* @__PURE__ */ jsxs2("label", { className: "sui-dyn-filter-option", children: [
-          /* @__PURE__ */ jsx2(
+        ) : /* @__PURE__ */ jsx3("div", { className: `sui-dyn-filter-options sui-dyn-filter-options--${filterDef.type ?? "checkbox"}`, children: options.map((o) => /* @__PURE__ */ jsxs3("label", { className: "sui-dyn-filter-option", children: [
+          /* @__PURE__ */ jsx3(
             "input",
             {
               type: filterDef.type === "radio" ? "radio" : "checkbox",
@@ -531,7 +641,17 @@ function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFi
     })
   ] });
 }
-var DEFAULT_STRINGS2 = { noResults: "No results found.", all: "All", clearFilters: "\xD7 Clear filters", search: "Search" };
+var DEFAULT_STRINGS2 = {
+  noResults: "No results found.",
+  all: "All",
+  clearFilters: "\xD7 Clear filters",
+  search: "Search",
+  call: "Call",
+  email: "Email",
+  website: "Website",
+  route: "Directions",
+  moreInfo: "More info"
+};
 function DynamicContentGrid({
   items = [],
   loading = false,
@@ -554,25 +674,25 @@ function DynamicContentGrid({
   const pos = filterBarConfig.position ?? "top";
   const hasActive = searchTerm.length > 0 || Object.values(activeFilters).some((v) => v.length > 0);
   const buildHref = (item) => detailUrlBuilder ? detailUrlBuilder(item) : defaultDetailUrl(item, fieldMap, collection);
-  const gridContent = /* @__PURE__ */ jsxs2(Fragment, { children: [
-    loading && /* @__PURE__ */ jsx2("div", { className: "sui-dyn-grid", style: { "--sui-dyn-cols": Math.min(cols, 4) }, children: Array.from({ length: Math.min(cols * 2, 6) }).map((_, i) => /* @__PURE__ */ jsx2("div", { className: "sui-dyn-skeleton" }, i)) }),
-    !loading && error && /* @__PURE__ */ jsxs2("p", { className: "sui-dyn-error", children: [
+  const gridContent = /* @__PURE__ */ jsxs3(Fragment, { children: [
+    loading && /* @__PURE__ */ jsx3("div", { className: "sui-dyn-grid", style: { "--sui-dyn-cols": Math.min(cols, 4) }, children: Array.from({ length: Math.min(cols * 2, 6) }).map((_, i) => /* @__PURE__ */ jsx3("div", { className: "sui-dyn-skeleton" }, i)) }),
+    !loading && error && /* @__PURE__ */ jsxs3("p", { className: "sui-dyn-error", children: [
       "\u26A0 ",
       error
     ] }),
-    !loading && !error && displayItems.length === 0 && /* @__PURE__ */ jsx2("p", { className: "sui-dyn-no-items", children: strings.noResults }),
-    !loading && !error && displayItems.length > 0 && /* @__PURE__ */ jsx2("div", { className: "sui-dyn-grid", style: { "--sui-dyn-cols": Math.min(cols, 4) }, children: displayItems.map((item) => {
-      const href = buildHref(item);
+    !loading && !error && displayItems.length === 0 && /* @__PURE__ */ jsx3("p", { className: "sui-dyn-no-items", children: strings.noResults }),
+    !loading && !error && displayItems.length > 0 && /* @__PURE__ */ jsx3("div", { className: "sui-dyn-grid", style: { "--sui-dyn-cols": Math.min(cols, 4) }, children: displayItems.map((item) => {
+      const href = cardDesign === "contact-card" ? "" : buildHref(item);
       const Wrap = href ? "a" : "article";
-      return /* @__PURE__ */ jsx2(Wrap, { className: `sui-dyn-card sui-dyn-card-${cardDesign}`, ...href ? { href } : {}, children: /* @__PURE__ */ jsx2(PreviewCard, { item, design: cardDesign, fieldMap, collection, detailUrlBuilder, dateLocale }) }, item.id ?? item.name);
+      return /* @__PURE__ */ jsx3(Wrap, { className: `sui-dyn-card sui-dyn-card-${cardDesign}`, ...href ? { href } : {}, children: /* @__PURE__ */ jsx3(PreviewCard, { item, design: cardDesign, fieldMap, collection, detailUrlBuilder, dateLocale, strings }) }, item.id ?? item.name);
     }) })
   ] });
-  return /* @__PURE__ */ jsxs2("section", { className: "sui-dyn-wrap", children: [
-    title && /* @__PURE__ */ jsx2("h2", { className: "sui-dyn-title", children: title }),
-    hasFilterBar ? /* @__PURE__ */ jsxs2("div", { className: `sui-dyn-layout sui-dyn-layout--${pos}`, children: [
-      pos === "right" || pos === "bottom" ? /* @__PURE__ */ jsxs2(Fragment, { children: [
-        /* @__PURE__ */ jsx2("div", { className: "sui-dyn-grid-wrap", children: gridContent }),
-        /* @__PURE__ */ jsx2(
+  return /* @__PURE__ */ jsxs3("section", { className: "sui-dyn-wrap", children: [
+    title && /* @__PURE__ */ jsx3("h2", { className: "sui-dyn-title", children: title }),
+    hasFilterBar ? /* @__PURE__ */ jsxs3("div", { className: `sui-dyn-layout sui-dyn-layout--${pos}`, children: [
+      pos === "right" || pos === "bottom" ? /* @__PURE__ */ jsxs3(Fragment, { children: [
+        /* @__PURE__ */ jsx3("div", { className: "sui-dyn-grid-wrap", children: gridContent }),
+        /* @__PURE__ */ jsx3(
           FilterBar,
           {
             allItems: items,
@@ -584,8 +704,8 @@ function DynamicContentGrid({
             strings
           }
         )
-      ] }) : /* @__PURE__ */ jsxs2(Fragment, { children: [
-        /* @__PURE__ */ jsx2(
+      ] }) : /* @__PURE__ */ jsxs3(Fragment, { children: [
+        /* @__PURE__ */ jsx3(
           FilterBar,
           {
             allItems: items,
@@ -597,9 +717,9 @@ function DynamicContentGrid({
             strings
           }
         ),
-        /* @__PURE__ */ jsx2("div", { className: "sui-dyn-grid-wrap", children: gridContent })
+        /* @__PURE__ */ jsx3("div", { className: "sui-dyn-grid-wrap", children: gridContent })
       ] }),
-      hasActive && /* @__PURE__ */ jsx2("button", { type: "button", className: "sui-dyn-reset-btn", onClick: () => {
+      hasActive && /* @__PURE__ */ jsx3("button", { type: "button", className: "sui-dyn-reset-btn", onClick: () => {
         setActiveFilters({});
         setSearchTerm("");
       }, children: strings.clearFilters })
