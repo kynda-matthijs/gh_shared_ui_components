@@ -102,6 +102,7 @@ var DEFAULT_STRINGS = {
   openChat: "Open chat",
   closeChat: "Close chat",
   clearChat: "Clear chat",
+  clearInput: "Clear",
   you: "You",
   assistant: "Assistant",
   disclaimer: "This is an AI assistant. Always double-check important details with the organisation itself.",
@@ -240,8 +241,9 @@ function IntakeForm({ intake, onChange, askName, askAge, askGender, strings, ope
   ] });
 }
 function StarterButtons({ starters, onPick }) {
-  if (!(starters == null ? void 0 : starters.length)) return null;
-  return /* @__PURE__ */ jsx2("div", { className: "sui-chat-starters", children: starters.map((s) => {
+  const visible = (starters ?? []).filter((s) => s.active !== false);
+  if (!visible.length) return null;
+  return /* @__PURE__ */ jsx2("div", { className: "sui-chat-starters", children: visible.map((s) => {
     const Icon = STARTER_ICONS[s.icon] ?? MessageCircle2;
     return /* @__PURE__ */ jsxs2("button", { type: "button", className: "sui-chat-starter-btn", onClick: () => onPick(s), children: [
       /* @__PURE__ */ jsx2(Icon, { className: "sui-chat-icon" }),
@@ -469,23 +471,41 @@ function ChatInterface({
     ] }),
     /* @__PURE__ */ jsxs2("form", { className: "sui-chat-form", onSubmit: handleFormSubmit, children: [
       /* @__PURE__ */ jsx2("label", { className: "sui-chat-sr-only", htmlFor: inputId, children: strings.inputLabel }),
-      /* @__PURE__ */ jsx2(
-        "input",
-        {
-          ref: inputRef,
-          id: inputId,
-          type: "text",
-          className: "sui-chat-input",
-          placeholder: placeholder || strings.inputLabel,
-          value: input,
-          onChange: (e) => {
-            setInput(e.target.value);
-            pendingExtraPromptRef.current = "";
-          },
-          disabled: pending,
-          autoComplete: "off"
-        }
-      ),
+      /* @__PURE__ */ jsxs2("div", { className: "sui-chat-input-wrap", children: [
+        /* @__PURE__ */ jsx2(
+          "input",
+          {
+            ref: inputRef,
+            id: inputId,
+            type: "text",
+            className: "sui-chat-input",
+            placeholder: placeholder || strings.inputLabel,
+            value: input,
+            onChange: (e) => {
+              setInput(e.target.value);
+              pendingExtraPromptRef.current = "";
+            },
+            disabled: pending,
+            autoComplete: "off"
+          }
+        ),
+        input && /* @__PURE__ */ jsx2(
+          "button",
+          {
+            type: "button",
+            className: "sui-chat-clear-input-btn",
+            onClick: () => {
+              var _a;
+              setInput("");
+              pendingExtraPromptRef.current = "";
+              (_a = inputRef.current) == null ? void 0 : _a.focus();
+            },
+            "aria-label": strings.clearInput,
+            title: strings.clearInput,
+            children: /* @__PURE__ */ jsx2(X, { className: "sui-chat-icon-sm" })
+          }
+        )
+      ] }),
       /* @__PURE__ */ jsx2("button", { type: "submit", className: "sui-chat-send-btn", disabled: pending || !input.trim(), "aria-label": strings.send, children: pending ? /* @__PURE__ */ jsx2(Loader2, { className: "sui-chat-icon sui-chat-spin" }) : /* @__PURE__ */ jsx2(Send, { className: "sui-chat-icon" }) })
     ] }),
     /* @__PURE__ */ jsx2("p", { className: "sui-chat-disclaimer", children: strings.disclaimer })
@@ -796,6 +816,7 @@ function DynamicContentGrid({
 }
 export {
   ChatInterface,
-  DynamicContentGrid
+  DynamicContentGrid,
+  STARTER_ICONS
 };
 //# sourceMappingURL=index.js.map

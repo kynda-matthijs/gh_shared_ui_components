@@ -25,7 +25,7 @@ const DEFAULT_STRINGS = {
     thinking: 'Thinking…', error: 'Something went wrong. Please try again.',
     retry: 'Try again', relatedHelp: 'Related help',
     call: 'Call', email: 'Email', website: 'Website', route: 'Directions', moreInfo: 'More info',
-    openChat: 'Open chat', closeChat: 'Close chat', clearChat: 'Clear chat',
+    openChat: 'Open chat', closeChat: 'Close chat', clearChat: 'Clear chat', clearInput: 'Clear',
     you: 'You', assistant: 'Assistant',
     disclaimer: 'This is an AI assistant. Always double-check important details with the organisation itself.',
     aboutYouTitle: 'About you (optional)',
@@ -180,10 +180,12 @@ function IntakeForm({ intake, onChange, askName, askAge, askGender, strings, ope
 // Only shown before the first message, same "welcome screen" convention as the
 // sui-chat-log-hint text it replaces.
 function StarterButtons({ starters, onPick }) {
-    if (!starters?.length) return null;
+    // `active` defaults to on for any starter saved before this field existed.
+    const visible = (starters ?? []).filter(s => s.active !== false);
+    if (!visible.length) return null;
     return (
         <div className="sui-chat-starters">
-            {starters.map(s => {
+            {visible.map(s => {
                 const Icon = STARTER_ICONS[s.icon] ?? MessageCircle;
                 return (
                     <button key={s.id} type="button" className="sui-chat-starter-btn" onClick={() => onPick(s)}>
@@ -435,17 +437,26 @@ export default function ChatInterface({
 
             <form className="sui-chat-form" onSubmit={handleFormSubmit}>
                 <label className="sui-chat-sr-only" htmlFor={inputId}>{strings.inputLabel}</label>
-                <input
-                    ref={inputRef}
-                    id={inputId}
-                    type="text"
-                    className="sui-chat-input"
-                    placeholder={placeholder || strings.inputLabel}
-                    value={input}
-                    onChange={e => { setInput(e.target.value); pendingExtraPromptRef.current = ''; }}
-                    disabled={pending}
-                    autoComplete="off"
-                />
+                <div className="sui-chat-input-wrap">
+                    <input
+                        ref={inputRef}
+                        id={inputId}
+                        type="text"
+                        className="sui-chat-input"
+                        placeholder={placeholder || strings.inputLabel}
+                        value={input}
+                        onChange={e => { setInput(e.target.value); pendingExtraPromptRef.current = ''; }}
+                        disabled={pending}
+                        autoComplete="off"
+                    />
+                    {input && (
+                        <button type="button" className="sui-chat-clear-input-btn"
+                            onClick={() => { setInput(''); pendingExtraPromptRef.current = ''; inputRef.current?.focus(); }}
+                            aria-label={strings.clearInput} title={strings.clearInput}>
+                            <X className="sui-chat-icon-sm" />
+                        </button>
+                    )}
+                </div>
                 <button type="submit" className="sui-chat-send-btn" disabled={pending || !input.trim()} aria-label={strings.send}>
                     {pending ? <Loader2 className="sui-chat-icon sui-chat-spin" /> : <Send className="sui-chat-icon" />}
                 </button>
