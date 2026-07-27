@@ -477,7 +477,7 @@ export default function ChatInterface({
             <form className="sui-chat-form" onSubmit={handleFormSubmit}>
                 <label className="sui-chat-sr-only" htmlFor={inputId}>{strings.inputLabel}</label>
                 <div className="sui-chat-input-wrap">
-                    {messages.length === 0 && !streaming && <ArrowToInput />}
+                    {/* {messages.length === 0 && !streaming && <ArrowToInput />} */}
                     <input
                         ref={inputRef}
                         id={inputId}

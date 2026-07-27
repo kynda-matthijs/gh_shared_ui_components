@@ -264,30 +264,6 @@ function StarterButtons({ starters, onPick, onPreview }) {
     );
   }) });
 }
-function ArrowToInput() {
-  return /* @__PURE__ */ jsxs2("svg", { className: "sui-chat-arrow-hint", viewBox: "0 0 64 56", fill: "none", "aria-hidden": "true", children: [
-    /* @__PURE__ */ jsx2(
-      "path",
-      {
-        d: "M56 6 C 44 3, 30 5, 25 16 C 21 24, 28 27, 22 35 C 17 42, 10 40, 8 48",
-        stroke: "currentColor",
-        strokeWidth: "2.5",
-        strokeLinecap: "round",
-        strokeLinejoin: "round"
-      }
-    ),
-    /* @__PURE__ */ jsx2(
-      "path",
-      {
-        d: "M8 48 L 3 38 M8 48 L 18 43",
-        stroke: "currentColor",
-        strokeWidth: "2.5",
-        strokeLinecap: "round",
-        strokeLinejoin: "round"
-      }
-    )
-  ] });
-}
 function Message({ role, content, chunks, streaming, strings, moreInfoHrefPattern }) {
   const sources = role === "assistant" ? dedupeSources(chunks) : [];
   return /* @__PURE__ */ jsxs2("div", { className: `sui-chat-msg sui-chat-msg--${role}`, children: [
@@ -509,7 +485,6 @@ function ChatInterface({
     /* @__PURE__ */ jsxs2("form", { className: "sui-chat-form", onSubmit: handleFormSubmit, children: [
       /* @__PURE__ */ jsx2("label", { className: "sui-chat-sr-only", htmlFor: inputId, children: strings.inputLabel }),
       /* @__PURE__ */ jsxs2("div", { className: "sui-chat-input-wrap", children: [
-        messages.length === 0 && !streaming && /* @__PURE__ */ jsx2(ArrowToInput, {}),
         /* @__PURE__ */ jsx2(
           "input",
           {
