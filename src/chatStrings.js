@@ -8,6 +8,7 @@
 export const CHAT_STRINGS = {
     nl: {
         title: 'Stel je vraag', inputLabel: 'Typ je vraag', send: 'Verstuur',
+        startHint: 'Kies een onderwerp of stel een vraag hieronder',
         thinking: 'Aan het antwoorden…', error: 'Er ging iets mis. Probeer het opnieuw.',
         retry: 'Opnieuw proberen', relatedHelp: 'Gerelateerde hulp',
         call: 'Bellen', email: 'E-mailen', website: 'Website', route: 'Route', moreInfo: 'Meer info',
@@ -19,6 +20,7 @@ export const CHAT_STRINGS = {
     },
     en: {
         title: 'Ask your question', inputLabel: 'Type your question', send: 'Send',
+        startHint: 'Choose a topic or ask a question below',
         thinking: 'Thinking…', error: 'Something went wrong. Please try again.',
         retry: 'Try again', relatedHelp: 'Related help',
         call: 'Call', email: 'Email', website: 'Website', route: 'Directions', moreInfo: 'More info',
@@ -30,6 +32,7 @@ export const CHAT_STRINGS = {
     },
     ar: {
         title: 'اطرح سؤالك', inputLabel: 'اكتب سؤالك', send: 'إرسال',
+        startHint: 'اختر موضوعًا أو اطرح سؤالاً أدناه',
         thinking: 'جارٍ الكتابة…', error: 'حدث خطأ ما. حاول مرة أخرى.',
         retry: 'حاول مرة أخرى', relatedHelp: 'مساعدة ذات صلة',
         call: 'اتصال', email: 'بريد إلكتروني', website: 'الموقع الإلكتروني', route: 'الاتجاهات', moreInfo: 'مزيد من المعلومات',
@@ -41,6 +44,7 @@ export const CHAT_STRINGS = {
     },
     tr: {
         title: 'Sorunuzu sorun', inputLabel: 'Sorunuzu yazın', send: 'Gönder',
+        startHint: 'Bir konu seçin veya aşağıya bir soru yazın',
         thinking: 'Yanıtlanıyor…', error: 'Bir şeyler ters gitti. Lütfen tekrar deneyin.',
         retry: 'Tekrar dene', relatedHelp: 'İlgili yardım',
         call: 'Ara', email: 'E-posta gönder', website: 'Web sitesi', route: 'Yol tarifi', moreInfo: 'Daha fazla bilgi',
@@ -52,6 +56,7 @@ export const CHAT_STRINGS = {
     },
     fr: {
         title: 'Posez votre question', inputLabel: 'Écrivez votre question', send: 'Envoyer',
+        startHint: 'Choisissez un sujet ou posez une question ci-dessous',
         thinking: 'Réponse en cours…', error: "Une erreur s'est produite. Veuillez réessayer.",
         retry: 'Réessayer', relatedHelp: 'Aide associée',
         call: 'Appeler', email: 'Envoyer un e-mail', website: 'Site web', route: 'Itinéraire', moreInfo: "Plus d'infos",
@@ -63,6 +68,7 @@ export const CHAT_STRINGS = {
     },
     de: {
         title: 'Stell deine Frage', inputLabel: 'Frage eingeben', send: 'Senden',
+        startHint: 'Wähle ein Thema oder stelle unten eine Frage',
         thinking: 'Antwortet…', error: 'Etwas ist schiefgelaufen. Bitte versuche es erneut.',
         retry: 'Erneut versuchen', relatedHelp: 'Verwandte Hilfe',
         call: 'Anrufen', email: 'E-Mail senden', website: 'Webseite', route: 'Route', moreInfo: 'Mehr Infos',
@@ -74,6 +80,7 @@ export const CHAT_STRINGS = {
     },
     es: {
         title: 'Haz tu pregunta', inputLabel: 'Escribe tu pregunta', send: 'Enviar',
+        startHint: 'Elige un tema o haz una pregunta abajo',
         thinking: 'Pensando…', error: 'Algo salió mal. Inténtalo de nuevo.',
         retry: 'Intentar de nuevo', relatedHelp: 'Ayuda relacionada',
         call: 'Llamar', email: 'Enviar correo', website: 'Sitio web', route: 'Cómo llegar', moreInfo: 'Más información',
@@ -85,6 +92,7 @@ export const CHAT_STRINGS = {
     },
     pt: {
         title: 'Faça a sua pergunta', inputLabel: 'Escreva a sua pergunta', send: 'Enviar',
+        startHint: 'Escolha um tópico ou faça uma pergunta abaixo',
         thinking: 'A responder…', error: 'Algo correu mal. Tente novamente.',
         retry: 'Tentar novamente', relatedHelp: 'Ajuda relacionada',
         call: 'Ligar', email: 'Enviar e-mail', website: 'Sítio web', route: 'Direções', moreInfo: 'Mais informação',
@@ -96,6 +104,7 @@ export const CHAT_STRINGS = {
     },
     pl: {
         title: 'Zadaj pytanie', inputLabel: 'Wpisz swoje pytanie', send: 'Wyślij',
+        startHint: 'Wybierz temat lub zadaj pytanie poniżej',
         thinking: 'Odpowiadam…', error: 'Coś poszło nie tak. Spróbuj ponownie.',
         retry: 'Spróbuj ponownie', relatedHelp: 'Powiązana pomoc',
         call: 'Zadzwoń', email: 'Wyślij e-mail', website: 'Strona internetowa', route: 'Wskazówki dojazdu', moreInfo: 'Więcej informacji',
@@ -107,6 +116,7 @@ export const CHAT_STRINGS = {
     },
     ru: {
         title: 'Задайте свой вопрос', inputLabel: 'Введите свой вопрос', send: 'Отправить',
+        startHint: 'Выберите тему или задайте вопрос ниже',
         thinking: 'Печатает…', error: 'Что-то пошло не так. Попробуйте ещё раз.',
         retry: 'Попробовать снова', relatedHelp: 'Похожая помощь',
         call: 'Позвонить', email: 'Написать', website: 'Веб-сайт', route: 'Маршрут', moreInfo: 'Подробнее',
@@ -118,6 +128,7 @@ export const CHAT_STRINGS = {
     },
     zh: {
         title: '提出您的问题', inputLabel: '输入您的问题', send: '发送',
+        startHint: '选择一个主题，或在下方提问',
         thinking: '正在回答…', error: '出了点问题，请重试。',
         retry: '重试', relatedHelp: '相关帮助',
         call: '致电', email: '发送邮件', website: '网站', route: '路线', moreInfo: '更多信息',

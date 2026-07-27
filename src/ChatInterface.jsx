@@ -22,6 +22,7 @@ const PUBLIC_FILTER = { folder: { $gte: 'public/', $lt: 'public0' } };
 
 const DEFAULT_STRINGS = {
     title: 'Ask your question', inputLabel: 'Type your question', send: 'Send',
+    startHint: 'Choose a topic or ask a question below',
     thinking: 'Thinking…', error: 'Something went wrong. Please try again.',
     retry: 'Try again', relatedHelp: 'Related help',
     call: 'Call', email: 'Email', website: 'Website', route: 'Directions', moreInfo: 'More info',
@@ -177,20 +178,20 @@ function IntakeForm({ intake, onChange, askName, askAge, askGender, strings, ope
 // Conversation-starter shortcut buttons — CMS-configured (label, icon, the actual
 // question, and an optional extraPrompt hidden from the visible transcript, see
 // module comment on buildIntakeContext's sibling handling in `sendQuery` below).
-// Only shown before the first message, same "welcome screen" convention as the
-// sui-chat-log-hint text it replaces.
+// Only shown before the first message, same "welcome screen" as the sui-chat-log-hint
+// text above it. `starters` here is expected already-filtered to active-only (the
+// caller also needs that same filtered list to decide whether to show the hint/arrow
+// at all, so the filtering happens once, in the parent).
 // `onPreview` is called with a starter's question on hover/focus (shown as the chat
 // input's placeholder, a ghost preview — never the actual input value) and with ''
 // on hover-out/blur. `onPick` is the real, "finalizing" action on click — unchanged
 // from before, it either sends immediately or fills the input for review, depending
 // on autoSendStarters.
 function StarterButtons({ starters, onPick, onPreview }) {
-    // `active` defaults to on for any starter saved before this field existed.
-    const visible = (starters ?? []).filter(s => s.active !== false);
-    if (!visible.length) return null;
+    if (!starters.length) return null;
     return (
         <div className="sui-chat-starters">
-            {visible.map(s => {
+            {starters.map(s => {
                 const Icon = STARTER_ICONS[s.icon] ?? MessageCircle;
                 return (
                     <button key={s.id} type="button" className="sui-chat-starter-btn"
@@ -205,6 +206,25 @@ function StarterButtons({ starters, onPick, onPreview }) {
                 );
             })}
         </div>
+    );
+}
+
+// Small hand-drawn-style arrow pointing down into the input box, shown alongside the
+// welcome-screen hint/starters (see the "welcome screen" empty-state condition around
+// `sui-chat-log`) so first-time visitors can find where to actually type. Purely
+// decorative (aria-hidden) — the input already has its own accessible label.
+function ArrowToInput() {
+    return (
+        <svg className="sui-chat-arrow-hint" viewBox="0 0 64 56" fill="none" aria-hidden="true">
+            <path
+                d="M56 6 C 44 3, 30 5, 25 16 C 21 24, 28 27, 22 35 C 17 42, 10 40, 8 48"
+                stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+            />
+            <path
+                d="M8 48 L 3 38 M8 48 L 18 43"
+                stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+            />
+        </svg>
     );
 }
 
@@ -252,6 +272,10 @@ export default function ChatInterface({
 }) {
     const strings = { ...DEFAULT_STRINGS, ...stringsProp };
     const isBubble = variant === 'chat-bubble';
+    // `active` defaults to on for any starter saved before this field existed. Computed
+    // once here since both the hint text above the starters and the starters themselves
+    // need to agree on whether there's anything to show.
+    const visibleStarters = (starters ?? []).filter(s => s.active !== false);
 
     const [open,      setOpen]      = useState(!isBubble);
     const [intake,      setIntake]      = useState({ name: '', age: '', gender: '' });
@@ -432,8 +456,8 @@ export default function ChatInterface({
             <div className="sui-chat-log" role="log" aria-relevant="additions" ref={logRef}>
                 {messages.length === 0 && !streaming && (
                     <>
-                        <p className="sui-chat-log-hint">{strings.inputLabel}…</p>
-                        <StarterButtons starters={starters} onPick={handleStarterPick} onPreview={setPreviewQuestion} />
+                        {visibleStarters.length > 0 && <p className="sui-chat-log-hint">{strings.startHint}</p>}
+                        <StarterButtons starters={visibleStarters} onPick={handleStarterPick} onPreview={setPreviewQuestion} />
                     </>
                 )}
                 {messages.map((m, i) => (
@@ -453,6 +477,7 @@ export default function ChatInterface({
             <form className="sui-chat-form" onSubmit={handleFormSubmit}>
                 <label className="sui-chat-sr-only" htmlFor={inputId}>{strings.inputLabel}</label>
                 <div className="sui-chat-input-wrap">
+                    {messages.length === 0 && !streaming && <ArrowToInput />}
                     <input
                         ref={inputRef}
                         id={inputId}
