@@ -90,6 +90,7 @@ var DEFAULT_STRINGS = {
   title: "Ask your question",
   inputLabel: "Type your question",
   send: "Send",
+  startHint: "Choose a topic or ask a question below",
   thinking: "Thinking\u2026",
   error: "Something went wrong. Please try again.",
   retry: "Try again",
@@ -241,9 +242,8 @@ function IntakeForm({ intake, onChange, askName, askAge, askGender, strings, ope
   ] });
 }
 function StarterButtons({ starters, onPick, onPreview }) {
-  const visible = (starters ?? []).filter((s) => s.active !== false);
-  if (!visible.length) return null;
-  return /* @__PURE__ */ jsx2("div", { className: "sui-chat-starters", children: visible.map((s) => {
+  if (!starters.length) return null;
+  return /* @__PURE__ */ jsx2("div", { className: "sui-chat-starters", children: starters.map((s) => {
     const Icon = STARTER_ICONS[s.icon] ?? MessageCircle2;
     return /* @__PURE__ */ jsxs2(
       "button",
@@ -263,6 +263,30 @@ function StarterButtons({ starters, onPick, onPreview }) {
       s.id
     );
   }) });
+}
+function ArrowToInput() {
+  return /* @__PURE__ */ jsxs2("svg", { className: "sui-chat-arrow-hint", viewBox: "0 0 64 56", fill: "none", "aria-hidden": "true", children: [
+    /* @__PURE__ */ jsx2(
+      "path",
+      {
+        d: "M56 6 C 44 3, 30 5, 25 16 C 21 24, 28 27, 22 35 C 17 42, 10 40, 8 48",
+        stroke: "currentColor",
+        strokeWidth: "2.5",
+        strokeLinecap: "round",
+        strokeLinejoin: "round"
+      }
+    ),
+    /* @__PURE__ */ jsx2(
+      "path",
+      {
+        d: "M8 48 L 3 38 M8 48 L 18 43",
+        stroke: "currentColor",
+        strokeWidth: "2.5",
+        strokeLinecap: "round",
+        strokeLinejoin: "round"
+      }
+    )
+  ] });
 }
 function Message({ role, content, chunks, streaming, strings, moreInfoHrefPattern }) {
   const sources = role === "assistant" ? dedupeSources(chunks) : [];
@@ -295,6 +319,7 @@ function ChatInterface({
 }) {
   const strings = { ...DEFAULT_STRINGS, ...stringsProp };
   const isBubble = variant === "chat-bubble";
+  const visibleStarters = (starters ?? []).filter((s) => s.active !== false);
   const [open, setOpen] = useState(!isBubble);
   const [intake, setIntake] = useState({ name: "", age: "", gender: "" });
   const [intakeOpen, setIntakeOpen] = useState(true);
@@ -469,11 +494,8 @@ function ChatInterface({
     ),
     /* @__PURE__ */ jsxs2("div", { className: "sui-chat-log", role: "log", "aria-relevant": "additions", ref: logRef, children: [
       messages.length === 0 && !streaming && /* @__PURE__ */ jsxs2(Fragment, { children: [
-        /* @__PURE__ */ jsxs2("p", { className: "sui-chat-log-hint", children: [
-          strings.inputLabel,
-          "\u2026"
-        ] }),
-        /* @__PURE__ */ jsx2(StarterButtons, { starters, onPick: handleStarterPick, onPreview: setPreviewQuestion })
+        visibleStarters.length > 0 && /* @__PURE__ */ jsx2("p", { className: "sui-chat-log-hint", children: strings.startHint }),
+        /* @__PURE__ */ jsx2(StarterButtons, { starters: visibleStarters, onPick: handleStarterPick, onPreview: setPreviewQuestion })
       ] }),
       messages.map((m, i) => /* @__PURE__ */ jsx2(Message, { ...m, strings, moreInfoHrefPattern }, i)),
       streaming && /* @__PURE__ */ jsx2(Message, { role: "assistant", content: streaming, streaming: true, strings, moreInfoHrefPattern })
@@ -487,6 +509,7 @@ function ChatInterface({
     /* @__PURE__ */ jsxs2("form", { className: "sui-chat-form", onSubmit: handleFormSubmit, children: [
       /* @__PURE__ */ jsx2("label", { className: "sui-chat-sr-only", htmlFor: inputId, children: strings.inputLabel }),
       /* @__PURE__ */ jsxs2("div", { className: "sui-chat-input-wrap", children: [
+        messages.length === 0 && !streaming && /* @__PURE__ */ jsx2(ArrowToInput, {}),
         /* @__PURE__ */ jsx2(
           "input",
           {
@@ -836,6 +859,7 @@ var CHAT_STRINGS = {
     title: "Stel je vraag",
     inputLabel: "Typ je vraag",
     send: "Verstuur",
+    startHint: "Kies een onderwerp of stel een vraag hieronder",
     thinking: "Aan het antwoorden\u2026",
     error: "Er ging iets mis. Probeer het opnieuw.",
     retry: "Opnieuw proberen",
@@ -863,6 +887,7 @@ var CHAT_STRINGS = {
     title: "Ask your question",
     inputLabel: "Type your question",
     send: "Send",
+    startHint: "Choose a topic or ask a question below",
     thinking: "Thinking\u2026",
     error: "Something went wrong. Please try again.",
     retry: "Try again",
@@ -890,6 +915,7 @@ var CHAT_STRINGS = {
     title: "\u0627\u0637\u0631\u062D \u0633\u0624\u0627\u0644\u0643",
     inputLabel: "\u0627\u0643\u062A\u0628 \u0633\u0624\u0627\u0644\u0643",
     send: "\u0625\u0631\u0633\u0627\u0644",
+    startHint: "\u0627\u062E\u062A\u0631 \u0645\u0648\u0636\u0648\u0639\u064B\u0627 \u0623\u0648 \u0627\u0637\u0631\u062D \u0633\u0624\u0627\u0644\u0627\u064B \u0623\u062F\u0646\u0627\u0647",
     thinking: "\u062C\u0627\u0631\u064D \u0627\u0644\u0643\u062A\u0627\u0628\u0629\u2026",
     error: "\u062D\u062F\u062B \u062E\u0637\u0623 \u0645\u0627. \u062D\u0627\u0648\u0644 \u0645\u0631\u0629 \u0623\u062E\u0631\u0649.",
     retry: "\u062D\u0627\u0648\u0644 \u0645\u0631\u0629 \u0623\u062E\u0631\u0649",
@@ -917,6 +943,7 @@ var CHAT_STRINGS = {
     title: "Sorunuzu sorun",
     inputLabel: "Sorunuzu yaz\u0131n",
     send: "G\xF6nder",
+    startHint: "Bir konu se\xE7in veya a\u015Fa\u011F\u0131ya bir soru yaz\u0131n",
     thinking: "Yan\u0131tlan\u0131yor\u2026",
     error: "Bir \u015Feyler ters gitti. L\xFCtfen tekrar deneyin.",
     retry: "Tekrar dene",
@@ -944,6 +971,7 @@ var CHAT_STRINGS = {
     title: "Posez votre question",
     inputLabel: "\xC9crivez votre question",
     send: "Envoyer",
+    startHint: "Choisissez un sujet ou posez une question ci-dessous",
     thinking: "R\xE9ponse en cours\u2026",
     error: "Une erreur s'est produite. Veuillez r\xE9essayer.",
     retry: "R\xE9essayer",
@@ -971,6 +999,7 @@ var CHAT_STRINGS = {
     title: "Stell deine Frage",
     inputLabel: "Frage eingeben",
     send: "Senden",
+    startHint: "W\xE4hle ein Thema oder stelle unten eine Frage",
     thinking: "Antwortet\u2026",
     error: "Etwas ist schiefgelaufen. Bitte versuche es erneut.",
     retry: "Erneut versuchen",
@@ -998,6 +1027,7 @@ var CHAT_STRINGS = {
     title: "Haz tu pregunta",
     inputLabel: "Escribe tu pregunta",
     send: "Enviar",
+    startHint: "Elige un tema o haz una pregunta abajo",
     thinking: "Pensando\u2026",
     error: "Algo sali\xF3 mal. Int\xE9ntalo de nuevo.",
     retry: "Intentar de nuevo",
@@ -1025,6 +1055,7 @@ var CHAT_STRINGS = {
     title: "Fa\xE7a a sua pergunta",
     inputLabel: "Escreva a sua pergunta",
     send: "Enviar",
+    startHint: "Escolha um t\xF3pico ou fa\xE7a uma pergunta abaixo",
     thinking: "A responder\u2026",
     error: "Algo correu mal. Tente novamente.",
     retry: "Tentar novamente",
@@ -1052,6 +1083,7 @@ var CHAT_STRINGS = {
     title: "Zadaj pytanie",
     inputLabel: "Wpisz swoje pytanie",
     send: "Wy\u015Blij",
+    startHint: "Wybierz temat lub zadaj pytanie poni\u017Cej",
     thinking: "Odpowiadam\u2026",
     error: "Co\u015B posz\u0142o nie tak. Spr\xF3buj ponownie.",
     retry: "Spr\xF3buj ponownie",
@@ -1079,6 +1111,7 @@ var CHAT_STRINGS = {
     title: "\u0417\u0430\u0434\u0430\u0439\u0442\u0435 \u0441\u0432\u043E\u0439 \u0432\u043E\u043F\u0440\u043E\u0441",
     inputLabel: "\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u0441\u0432\u043E\u0439 \u0432\u043E\u043F\u0440\u043E\u0441",
     send: "\u041E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C",
+    startHint: "\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0442\u0435\u043C\u0443 \u0438\u043B\u0438 \u0437\u0430\u0434\u0430\u0439\u0442\u0435 \u0432\u043E\u043F\u0440\u043E\u0441 \u043D\u0438\u0436\u0435",
     thinking: "\u041F\u0435\u0447\u0430\u0442\u0430\u0435\u0442\u2026",
     error: "\u0427\u0442\u043E-\u0442\u043E \u043F\u043E\u0448\u043B\u043E \u043D\u0435 \u0442\u0430\u043A. \u041F\u043E\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u0435\u0449\u0451 \u0440\u0430\u0437.",
     retry: "\u041F\u043E\u043F\u0440\u043E\u0431\u043E\u0432\u0430\u0442\u044C \u0441\u043D\u043E\u0432\u0430",
@@ -1106,6 +1139,7 @@ var CHAT_STRINGS = {
     title: "\u63D0\u51FA\u60A8\u7684\u95EE\u9898",
     inputLabel: "\u8F93\u5165\u60A8\u7684\u95EE\u9898",
     send: "\u53D1\u9001",
+    startHint: "\u9009\u62E9\u4E00\u4E2A\u4E3B\u9898\uFF0C\u6216\u5728\u4E0B\u65B9\u63D0\u95EE",
     thinking: "\u6B63\u5728\u56DE\u7B54\u2026",
     error: "\u51FA\u4E86\u70B9\u95EE\u9898\uFF0C\u8BF7\u91CD\u8BD5\u3002",
     retry: "\u91CD\u8BD5",
