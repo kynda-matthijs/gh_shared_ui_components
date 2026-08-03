@@ -167,6 +167,40 @@ function saveMessages(key, messages) {
   } catch {
   }
 }
+function randomId() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+function getOrCreateLogSessionId(key) {
+  if (!key) return randomId();
+  const storageKey = `${key}:logId`;
+  try {
+    const existing = sessionStorage.getItem(storageKey);
+    if (existing) return existing;
+    const created = randomId();
+    sessionStorage.setItem(storageKey, created);
+    return created;
+  } catch {
+    return randomId();
+  }
+}
+function logChatTurn(endpoint, sessionId, language, messages) {
+  if (!endpoint) return;
+  try {
+    fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId,
+        language,
+        messages: messages.map((m) => ({ role: m.role, content: m.content }))
+      }),
+      keepalive: true
+    }).catch(() => {
+    });
+  } catch {
+  }
+}
 function buildMoreInfoHref(pattern, entityId) {
   if (!pattern) return null;
   return pattern.replace("{id}", encodeURIComponent(entityId));
@@ -291,7 +325,9 @@ function ChatInterface({
   askAge = false,
   askGender = false,
   starters = [],
-  autoSendStarters = false
+  autoSendStarters = false,
+  chatLoggingEnabled = false,
+  chatLogEndpoint = null
 }) {
   const strings = { ...DEFAULT_STRINGS, ...stringsProp };
   const isBubble = variant === "chat-bubble";
@@ -310,6 +346,8 @@ function ChatInterface({
   const inputRef = useRef(null);
   const toggleRef = useRef(null);
   const inputId = useId();
+  const sessionIdRef = useRef(null);
+  if (sessionIdRef.current == null) sessionIdRef.current = getOrCreateLogSessionId(persistKey);
   const scrollToBottom = useCallback(() => {
     requestAnimationFrame(() => {
       if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
@@ -401,6 +439,9 @@ function ChatInterface({
       const withAssistant = [...nextMessages, { role: "assistant", content: assistantText, chunks }];
       setMessages(withAssistant);
       saveMessages(persistKey, withAssistant);
+      if (chatLoggingEnabled) {
+        logChatTurn(chatLogEndpoint, sessionIdRef.current, languageName, withAssistant);
+      }
     } catch (err) {
       setError(strings.error);
     } finally {
@@ -408,7 +449,7 @@ function ChatInterface({
       setPending(false);
       scrollToBottom();
     }
-  }, [pending, messages, aiSearchId, languageName, persistKey, strings.error, scrollToBottom, intake]);
+  }, [pending, messages, aiSearchId, languageName, persistKey, strings.error, scrollToBottom, intake, chatLoggingEnabled, chatLogEndpoint]);
   const handleFormSubmit = useCallback((e) => {
     e.preventDefault();
     const extra = pendingExtraPromptRef.current;

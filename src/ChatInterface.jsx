@@ -13,6 +13,12 @@ import { STARTER_ICONS } from './starterIcons.js';
 //     sessionStorage persistKey, and a moreInfoHref pointing at the site's own
 //     service detail pages)
 //
+// Optional pilot chat logging (chatLoggingEnabled + chatLogEndpoint props): when both
+// are set, each completed exchange is POSTed to chatLogEndpoint (api_server's /log/v1,
+// see that repo's chatlog_router.js) fire-and-forget — never awaited, never touched by
+// component state, `keepalive: true` so it survives a tab close right after sending.
+// A failure there is invisible to the person chatting, by design (see logChatTurn).
+//
 // SECURITY: the `folder: public/` retrieval filter below is NOT a prop and must never
 // become one. It's the only thing standing between this being a safe public/preview
 // chatbot and a leak of internal case notes indexed alongside it (see the sync module,
@@ -100,6 +106,51 @@ function saveMessages(key, messages) {
     if (!key) return;
     try { sessionStorage.setItem(key, JSON.stringify(messages.slice(-MAX_STORED_MESSAGES))); }
     catch { /* private browsing / quota exceeded — degrade to in-memory only */ }
+}
+
+// ── Optional pilot chat logging (see module comment) ──────────────────────
+function randomId() {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+// A stable id correlating every turn of one conversation into a single logged
+// entry (chatlog_router.js upserts by it). NOT the same as persistKey: persistKey
+// is one constant string shared by every visitor of a given widget instance, so
+// reusing it here would merge unrelated visitors' conversations into one log.
+// Reuses the same sessionStorage entry across a reload (like persisted messages)
+// when persistKey is set; otherwise lives only for this component instance.
+function getOrCreateLogSessionId(key) {
+    if (!key) return randomId();
+    const storageKey = `${key}:logId`;
+    try {
+        const existing = sessionStorage.getItem(storageKey);
+        if (existing) return existing;
+        const created = randomId();
+        sessionStorage.setItem(storageKey, created);
+        return created;
+    } catch {
+        return randomId(); // private browsing / quota exceeded — degrade to in-memory only
+    }
+}
+
+// Fire-and-forget: never awaited by the caller, never feeds into component state
+// (setError/setPending/etc). A logging failure must stay completely invisible to
+// the person using the chat widget.
+function logChatTurn(endpoint, sessionId, language, messages) {
+    if (!endpoint) return;
+    try {
+        fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                sessionId,
+                language,
+                messages: messages.map(m => ({ role: m.role, content: m.content })),
+            }),
+            keepalive: true,
+        }).catch(() => {});
+    } catch { /* ignore — see comment above */ }
 }
 
 // moreInfoHrefPattern is a plain string like "/service/{id}/", not a function — props
@@ -269,6 +320,8 @@ export default function ChatInterface({
     askGender = false,
     starters = [],
     autoSendStarters = false,
+    chatLoggingEnabled = false,
+    chatLogEndpoint = null,
 }) {
     const strings = { ...DEFAULT_STRINGS, ...stringsProp };
     const isBubble = variant === 'chat-bubble';
@@ -304,6 +357,10 @@ export default function ChatInterface({
     const inputRef = useRef(null);
     const toggleRef = useRef(null);
     const inputId  = useId();
+    // Lazily computed on first render (not a useState initializer) so it never runs
+    // during SSR module evaluation, only once this component actually mounts.
+    const sessionIdRef = useRef(null);
+    if (sessionIdRef.current == null) sessionIdRef.current = getOrCreateLogSessionId(persistKey);
 
     const scrollToBottom = useCallback(() => {
         requestAnimationFrame(() => {
@@ -399,6 +456,9 @@ export default function ChatInterface({
             const withAssistant = [...nextMessages, { role: 'assistant', content: assistantText, chunks }];
             setMessages(withAssistant);
             saveMessages(persistKey, withAssistant);
+            if (chatLoggingEnabled) {
+                logChatTurn(chatLogEndpoint, sessionIdRef.current, languageName, withAssistant);
+            }
         } catch (err) {
             setError(strings.error);
         } finally {
@@ -406,7 +466,7 @@ export default function ChatInterface({
             setPending(false);
             scrollToBottom();
         }
-    }, [pending, messages, aiSearchId, languageName, persistKey, strings.error, scrollToBottom, intake]);
+    }, [pending, messages, aiSearchId, languageName, persistKey, strings.error, scrollToBottom, intake, chatLoggingEnabled, chatLogEndpoint]);
 
     const handleFormSubmit = useCallback((e) => {
         e.preventDefault();
