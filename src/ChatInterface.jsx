@@ -19,6 +19,11 @@ import { STARTER_ICONS } from './starterIcons.js';
 // component state, `keepalive: true` so it survives a tab close right after sending.
 // A failure there is invisible to the person chatting, by design (see logChatTurn).
 //
+// systemPrompt (optional): extra CMS-configurable instruction appended to the system
+// message (see buildSystemMessage) — the consuming app resolves this from its own
+// config (e.g. a region-wide default overridable per block) before passing it in;
+// this component just appends whatever string it's given.
+//
 // SECURITY: the `folder: public/` retrieval filter below is NOT a prop and must never
 // become one. It's the only thing standing between this being a safe public/preview
 // chatbot and a leak of internal case notes indexed alongside it (see the sync module,
@@ -186,6 +191,23 @@ function buildIntakeContext(intake) {
     return ` ${parts.join(' ')} Never ask them to confirm or repeat this information back.`;
 }
 
+// Builds the system message sent with every request. Language: prefer whatever
+// language the person is actually typing in (so a Dutch-language site can still help
+// someone writing in Arabic or Turkish); languageName (the site's configured/UI
+// language) is only the fallback for when that can't be confidently determined —
+// not the default. systemPrompt is the CMS-configurable extra instruction (region
+// default, optionally overridden per ai-chat block — see the consuming apps'
+// wrapper components); extraPrompt is a conversation-starter's own hidden context
+// for this one turn only (see StarterButtons/sendQuery below).
+function buildSystemMessage(languageName, intake, systemPrompt, extraPrompt) {
+    return `Respond in the same language the person is writing in. If you can't confidently `
+        + `tell what language that is, respond in ${languageName} instead. Keep answers concise `
+        + `and easy to read for someone who may be in a stressful situation.`
+        + `${buildIntakeContext(intake)}`
+        + `${systemPrompt?.trim() ? ` ${systemPrompt.trim()}` : ''}`
+        + `${extraPrompt ? ` ${extraPrompt}` : ''}`;
+}
+
 // Optional pre-chat context (name/age/gender) — every field independently opt-in via
 // props, local component state only (never sessionStorage/persisted, unlike chat
 // history), never blocks sending a message. See buildIntakeContext for how it's used.
@@ -322,6 +344,7 @@ export default function ChatInterface({
     autoSendStarters = false,
     chatLoggingEnabled = false,
     chatLogEndpoint = null,
+    systemPrompt = '',
 }) {
     const strings = { ...DEFAULT_STRINGS, ...stringsProp };
     const isBubble = variant === 'chat-bubble';
@@ -391,6 +414,7 @@ export default function ChatInterface({
     // extraPrompt is a conversation-starter's hidden context (see StarterButtons) —
     // it's appended to the system message for this one turn only, never shown in the
     // visible transcript (nextMessages/Message rendering only ever sees `query`).
+    // See buildSystemMessage for how it combines with systemPrompt/languageName/intake.
     const sendQuery = useCallback(async (query, extraPrompt = '') => {
         query = query.trim();
         if (!query || pending) return;
@@ -408,7 +432,7 @@ export default function ChatInterface({
         const apiUrl = `https://${aiSearchId}.search.ai.cloudflare.com/chat/completions`;
         const body = {
             messages: [
-                { role: 'system', content: `Respond in ${languageName}. Keep answers concise and easy to read for someone who may be in a stressful situation.${buildIntakeContext(intake)}${extraPrompt ? ` ${extraPrompt}` : ''}` },
+                { role: 'system', content: buildSystemMessage(languageName, intake, systemPrompt, extraPrompt) },
                 ...nextMessages.map(m => ({ role: m.role, content: m.content })),
             ],
             stream: true,
@@ -466,7 +490,7 @@ export default function ChatInterface({
             setPending(false);
             scrollToBottom();
         }
-    }, [pending, messages, aiSearchId, languageName, persistKey, strings.error, scrollToBottom, intake, chatLoggingEnabled, chatLogEndpoint]);
+    }, [pending, messages, aiSearchId, languageName, persistKey, strings.error, scrollToBottom, intake, chatLoggingEnabled, chatLogEndpoint, systemPrompt]);
 
     const handleFormSubmit = useCallback((e) => {
         e.preventDefault();

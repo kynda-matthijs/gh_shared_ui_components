@@ -227,6 +227,9 @@ function buildIntakeContext(intake) {
   if (!parts.length) return "";
   return ` ${parts.join(" ")} Never ask them to confirm or repeat this information back.`;
 }
+function buildSystemMessage(languageName, intake, systemPrompt, extraPrompt) {
+  return `Respond in the same language the person is writing in. If you can't confidently tell what language that is, respond in ${languageName} instead. Keep answers concise and easy to read for someone who may be in a stressful situation.${buildIntakeContext(intake)}${(systemPrompt == null ? void 0 : systemPrompt.trim()) ? ` ${systemPrompt.trim()}` : ""}${extraPrompt ? ` ${extraPrompt}` : ""}`;
+}
 function IntakeForm({ intake, onChange, askName, askAge, askGender, strings, open, onToggle }) {
   if (!askName && !askAge && !askGender) return null;
   return /* @__PURE__ */ jsxs2("div", { className: "sui-chat-intake", children: [
@@ -327,7 +330,8 @@ function ChatInterface({
   starters = [],
   autoSendStarters = false,
   chatLoggingEnabled = false,
-  chatLogEndpoint = null
+  chatLogEndpoint = null,
+  systemPrompt = ""
 }) {
   const strings = { ...DEFAULT_STRINGS, ...stringsProp };
   const isBubble = variant === "chat-bubble";
@@ -389,7 +393,7 @@ function ChatInterface({
     const apiUrl = `https://${aiSearchId}.search.ai.cloudflare.com/chat/completions`;
     const body = {
       messages: [
-        { role: "system", content: `Respond in ${languageName}. Keep answers concise and easy to read for someone who may be in a stressful situation.${buildIntakeContext(intake)}${extraPrompt ? ` ${extraPrompt}` : ""}` },
+        { role: "system", content: buildSystemMessage(languageName, intake, systemPrompt, extraPrompt) },
         ...nextMessages.map((m) => ({ role: m.role, content: m.content }))
       ],
       stream: true,
@@ -449,7 +453,7 @@ function ChatInterface({
       setPending(false);
       scrollToBottom();
     }
-  }, [pending, messages, aiSearchId, languageName, persistKey, strings.error, scrollToBottom, intake, chatLoggingEnabled, chatLogEndpoint]);
+  }, [pending, messages, aiSearchId, languageName, persistKey, strings.error, scrollToBottom, intake, chatLoggingEnabled, chatLogEndpoint, systemPrompt]);
   const handleFormSubmit = useCallback((e) => {
     e.preventDefault();
     const extra = pendingExtraPromptRef.current;
