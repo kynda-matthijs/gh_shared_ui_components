@@ -366,9 +366,10 @@ var ChatInterface = forwardRef(function ChatInterface2({
   chatLogEndpoint = null,
   systemPrompt = "",
   retrievalOverrides = null,
-  onSearchChunks = null
+  onSearchChunks = null,
+  botName = ""
 }, ref) {
-  const strings = { ...DEFAULT_STRINGS, ...stringsProp };
+  const strings = { ...DEFAULT_STRINGS, ...stringsProp, ...(botName == null ? void 0 : botName.trim()) ? { assistant: botName.trim() } : {} };
   const isBubble = variant === "chat-bubble";
   const visibleStarters = (starters ?? []).filter((s) => s.active !== false);
   const [open, setOpen] = useState(!isBubble);
@@ -1343,7 +1344,7 @@ var CHAT_STRINGS = {
 };
 
 // src/version.js
-var SHARED_UI_VERSION = "0.3.0";
+var SHARED_UI_VERSION = "0.4.0";
 export {
   CHAT_STRINGS,
   ChatInterface_default as ChatInterface,

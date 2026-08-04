@@ -12,6 +12,13 @@ the one you're actively working on. Forgetting one leaves it silently rendering 
 stale build with no error — check its installed version against this file with
 `grep '"version"' node_modules/stappie-shared-ui/package.json`.
 
+## 0.4.0 — 2026-08-04
+
+- New `botName` prop — overrides `strings.assistant` (the speaker label shown next to
+  the bot's messages, "Stappie" by default) with a CMS-configurable name. Same
+  region-default-overridable-per-block resolution pattern as `systemPrompt`; the
+  consuming app resolves the effective name and passes it in.
+
 ## 0.3.0 — 2026-08-04
 
 Retrieval tuning/diagnostics escape hatch for `ChatInterface`, built for

@@ -32,6 +32,11 @@ import { STARTER_ICONS } from './starterIcons.js';
 // config (e.g. a region-wide default overridable per block) before passing it in;
 // this component just appends whatever string it's given.
 //
+// botName (optional): overrides strings.assistant (the speaker label shown next to
+// the bot's messages, "Stappie" by default) with a CMS-configurable name — same
+// region-default-overridable-per-block resolution pattern as systemPrompt, resolved
+// by the consuming app before passing it in.
+//
 // Retrieval tuning/diagnostics escape hatch (retrievalOverrides, onSearchChunks, and
 // the resendLastQuery() ref method) exists for admin_client's AiChatPreview.jsx
 // tuning panel — mirrors Cloudflare's own AI Search playground (adjust max_num_results/
@@ -415,8 +420,13 @@ const ChatInterface = forwardRef(function ChatInterface({
     systemPrompt = '',
     retrievalOverrides = null,
     onSearchChunks = null,
+    botName = '',
 }, ref) {
-    const strings = { ...DEFAULT_STRINGS, ...stringsProp };
+    // botName overrides just the one strings.assistant key (the speaker label shown
+    // next to each of the bot's messages) rather than requiring the consuming app to
+    // clone/override the whole per-language strings table for one field — see
+    // buildSystemMessage's sibling pattern (systemPrompt) for the same reasoning.
+    const strings = { ...DEFAULT_STRINGS, ...stringsProp, ...(botName?.trim() ? { assistant: botName.trim() } : {}) };
     const isBubble = variant === 'chat-bubble';
     // `active` defaults to on for any starter saved before this field existed. Computed
     // once here since both the hint text above the starters and the starters themselves
