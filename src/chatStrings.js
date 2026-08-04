@@ -24,6 +24,9 @@ export const CHAT_STRINGS = {
         loggingOptOutConfirm: 'Uitschakelen voor deze sessie',
         loggingOptOutCancel: 'Annuleren',
         loggingOptedOutNotice: 'Opslaan is uitgeschakeld voor deze sessie.',
+        statusSearching: 'Aan het zoeken…',
+        statusFound: '{n} resultaten gevonden…',
+        statusGenerating: 'Antwoord aan het opstellen…',
     },
     en: {
         title: 'Ask your question', inputLabel: 'Type your question', send: 'Send',
@@ -43,6 +46,9 @@ export const CHAT_STRINGS = {
         loggingOptOutConfirm: 'Turn off for this session',
         loggingOptOutCancel: 'Cancel',
         loggingOptedOutNotice: 'Logging is turned off for this session.',
+        statusSearching: 'Searching…',
+        statusFound: '{n} results found…',
+        statusGenerating: 'Preparing an answer…',
     },
     ar: {
         title: 'اطرح سؤالك', inputLabel: 'اكتب سؤالك', send: 'إرسال',
@@ -62,6 +68,9 @@ export const CHAT_STRINGS = {
         loggingOptOutConfirm: 'إيقاف لهذه الجلسة',
         loggingOptOutCancel: 'إلغاء',
         loggingOptedOutNotice: 'تم إيقاف التسجيل لهذه الجلسة.',
+        statusSearching: 'جارٍ البحث…',
+        statusFound: 'تم العثور على {n} نتيجة…',
+        statusGenerating: 'جارٍ إعداد الإجابة…',
     },
     tr: {
         title: 'Sorunuzu sorun', inputLabel: 'Sorunuzu yazın', send: 'Gönder',
@@ -81,6 +90,9 @@ export const CHAT_STRINGS = {
         loggingOptOutConfirm: 'Bu oturum için kapat',
         loggingOptOutCancel: 'İptal',
         loggingOptedOutNotice: 'Bu oturum için kayıt kapatıldı.',
+        statusSearching: 'Aranıyor…',
+        statusFound: '{n} sonuç bulundu…',
+        statusGenerating: 'Yanıt hazırlanıyor…',
     },
     fr: {
         title: 'Posez votre question', inputLabel: 'Écrivez votre question', send: 'Envoyer',
@@ -100,6 +112,9 @@ export const CHAT_STRINGS = {
         loggingOptOutConfirm: 'Désactiver pour cette session',
         loggingOptOutCancel: 'Annuler',
         loggingOptedOutNotice: "L'enregistrement est désactivé pour cette session.",
+        statusSearching: 'Recherche en cours…',
+        statusFound: '{n} résultats trouvés…',
+        statusGenerating: 'Préparation de la réponse…',
     },
     de: {
         title: 'Stell deine Frage', inputLabel: 'Frage eingeben', send: 'Senden',
@@ -119,6 +134,9 @@ export const CHAT_STRINGS = {
         loggingOptOutConfirm: 'Für diese Sitzung deaktivieren',
         loggingOptOutCancel: 'Abbrechen',
         loggingOptedOutNotice: 'Die Protokollierung ist für diese Sitzung deaktiviert.',
+        statusSearching: 'Suche läuft…',
+        statusFound: '{n} Ergebnisse gefunden…',
+        statusGenerating: 'Antwort wird vorbereitet…',
     },
     es: {
         title: 'Haz tu pregunta', inputLabel: 'Escribe tu pregunta', send: 'Enviar',
@@ -138,6 +156,9 @@ export const CHAT_STRINGS = {
         loggingOptOutConfirm: 'Desactivar para esta sesión',
         loggingOptOutCancel: 'Cancelar',
         loggingOptedOutNotice: 'El registro está desactivado para esta sesión.',
+        statusSearching: 'Buscando…',
+        statusFound: '{n} resultados encontrados…',
+        statusGenerating: 'Preparando una respuesta…',
     },
     pt: {
         title: 'Faça a sua pergunta', inputLabel: 'Escreva a sua pergunta', send: 'Enviar',
@@ -157,6 +178,9 @@ export const CHAT_STRINGS = {
         loggingOptOutConfirm: 'Desativar para esta sessão',
         loggingOptOutCancel: 'Cancelar',
         loggingOptedOutNotice: 'O registo está desativado para esta sessão.',
+        statusSearching: 'A pesquisar…',
+        statusFound: '{n} resultados encontrados…',
+        statusGenerating: 'A preparar uma resposta…',
     },
     pl: {
         title: 'Zadaj pytanie', inputLabel: 'Wpisz swoje pytanie', send: 'Wyślij',
@@ -176,6 +200,9 @@ export const CHAT_STRINGS = {
         loggingOptOutConfirm: 'Wyłącz na tę sesję',
         loggingOptOutCancel: 'Anuluj',
         loggingOptedOutNotice: 'Zapisywanie jest wyłączone na tę sesję.',
+        statusSearching: 'Wyszukiwanie…',
+        statusFound: 'Znaleziono {n} wyników…',
+        statusGenerating: 'Przygotowywanie odpowiedzi…',
     },
     ru: {
         title: 'Задайте свой вопрос', inputLabel: 'Введите свой вопрос', send: 'Отправить',
@@ -195,6 +222,9 @@ export const CHAT_STRINGS = {
         loggingOptOutConfirm: 'Отключить для этой сессии',
         loggingOptOutCancel: 'Отмена',
         loggingOptedOutNotice: 'Сохранение отключено для этой сессии.',
+        statusSearching: 'Идёт поиск…',
+        statusFound: 'Найдено результатов: {n}…',
+        statusGenerating: 'Подготовка ответа…',
     },
     zh: {
         title: '提出您的问题', inputLabel: '输入您的问题', send: '发送',
@@ -214,5 +244,8 @@ export const CHAT_STRINGS = {
         loggingOptOutConfirm: '本次会话关闭',
         loggingOptOutCancel: '取消',
         loggingOptedOutNotice: '本次会话记录已关闭。',
+        statusSearching: '正在搜索…',
+        statusFound: '找到 {n} 个结果…',
+        statusGenerating: '正在准备答案…',
     },
 };

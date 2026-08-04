@@ -118,7 +118,10 @@ var DEFAULT_STRINGS = {
   loggingOptOutModalBody: "This stops us from saving this conversation for review, for the rest of this browser session. You can keep chatting as normal.",
   loggingOptOutConfirm: "Turn off for this session",
   loggingOptOutCancel: "Cancel",
-  loggingOptedOutNotice: "Logging is turned off for this session."
+  loggingOptedOutNotice: "Logging is turned off for this session.",
+  statusSearching: "Searching\u2026",
+  statusFound: "{n} results found\u2026",
+  statusGenerating: "Preparing an answer\u2026"
 };
 function escapeHtml(s) {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
@@ -142,6 +145,14 @@ function parseSSEBlock(block) {
     else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
   }
   return dataLines.length ? { eventName, data: dataLines.join("\n") } : null;
+}
+function formatStatus(status, strings) {
+  if (!status) return "";
+  if (status === "searching") return strings.statusSearching ?? strings.thinking;
+  if (status === "generating") return strings.statusGenerating ?? strings.thinking;
+  const found = status.match(/^found:(\d+)$/);
+  if (found) return (strings.statusFound ?? strings.thinking).replace("{n}", found[1]);
+  return strings.thinking;
 }
 function dedupeSources(chunks) {
   var _a;
@@ -367,7 +378,9 @@ var ChatInterface = forwardRef(function ChatInterface2({
   systemPrompt = "",
   retrievalOverrides = null,
   onSearchChunks = null,
-  botName = ""
+  botName = "",
+  chatProxyEndpoint = null,
+  chatProxySettings = null
 }, ref) {
   const strings = { ...DEFAULT_STRINGS, ...stringsProp, ...(botName == null ? void 0 : botName.trim()) ? { assistant: botName.trim() } : {} };
   const isBubble = variant === "chat-bubble";
@@ -381,6 +394,7 @@ var ChatInterface = forwardRef(function ChatInterface2({
   const [previewQuestion, setPreviewQuestion] = useState("");
   const [streaming, setStreaming] = useState("");
   const [pending, setPending] = useState(false);
+  const [statusText, setStatusText] = useState("");
   const [error, setError] = useState("");
   const logRef = useRef(null);
   const inputRef = useRef(null);
@@ -437,17 +451,23 @@ var ChatInterface = forwardRef(function ChatInterface2({
     setPending(true);
     setStreaming(" ");
     scrollToBottom();
-    const apiUrl = `https://${aiSearchId}.search.ai.cloudflare.com/chat/completions`;
-    const body = {
+    const fullSystemPrompt = buildSystemMessage(languageName, intake, systemPrompt, extraPrompt);
+    const usingProxy = !!chatProxyEndpoint;
+    const apiUrl = usingProxy ? chatProxyEndpoint : `https://${aiSearchId}.search.ai.cloudflare.com/chat/completions`;
+    const body = usingProxy ? {
+      aiSearchId,
+      messages: nextMessages.map((m) => ({ role: m.role, content: m.content })),
+      systemPrompt: fullSystemPrompt,
+      settings: chatProxySettings
+    } : {
       messages: [
-        { role: "system", content: buildSystemMessage(languageName, intake, systemPrompt, extraPrompt) },
+        { role: "system", content: fullSystemPrompt },
         ...nextMessages.map((m) => ({ role: m.role, content: m.content }))
       ],
       stream: true,
       // retrievalOverrides (max_num_results/match_threshold/etc, per Cloudflare's
-      // ai_search_options.retrieval schema) is a per-request debugging/tuning escape
-      // hatch — see admin_client's AiChatPreview.jsx tuning panel. Never used by the
-      // public mini_site widget; `filters` is always present regardless, since the
+      // ai_search_options.retrieval schema) is a per-request debugging/tuning
+      // escape hatch. `filters` is always present regardless, since the
       // public/-only retrieval scope (see module SECURITY note) must never be
       // overridable by whatever the caller passes in.
       ai_search_options: { retrieval: { ...retrievalOverrides, filters: PUBLIC_FILTER } }
@@ -480,6 +500,11 @@ var ChatInterface = forwardRef(function ChatInterface2({
             }
             continue;
           }
+          if (parsed.eventName === "status") {
+            setStatusText(parsed.data);
+            continue;
+          }
+          if (parsed.eventName === "meta") continue;
           try {
             const frame = JSON.parse(parsed.data);
             const delta = (_c = (_b = (_a = frame.choices) == null ? void 0 : _a[0]) == null ? void 0 : _b.delta) == null ? void 0 : _c.content;
@@ -504,10 +529,11 @@ var ChatInterface = forwardRef(function ChatInterface2({
       setError(strings.error);
     } finally {
       setStreaming("");
+      setStatusText("");
       setPending(false);
       scrollToBottom();
     }
-  }, [pending, messages, aiSearchId, languageName, persistKey, strings.error, scrollToBottom, intake, chatLoggingEnabled, chatLogEndpoint, systemPrompt, loggingOptedOut, retrievalOverrides, onSearchChunks]);
+  }, [pending, messages, aiSearchId, languageName, persistKey, strings.error, scrollToBottom, intake, chatLoggingEnabled, chatLogEndpoint, systemPrompt, loggingOptedOut, retrievalOverrides, onSearchChunks, chatProxyEndpoint, chatProxySettings]);
   const handleFormSubmit = useCallback((e) => {
     e.preventDefault();
     const extra = pendingExtraPromptRef.current;
@@ -581,7 +607,7 @@ var ChatInterface = forwardRef(function ChatInterface2({
       messages.map((m, i) => /* @__PURE__ */ jsx2(Message, { ...m, strings, moreInfoHrefPattern }, i)),
       streaming && /* @__PURE__ */ jsx2(Message, { role: "assistant", content: streaming, streaming: true, strings, moreInfoHrefPattern })
     ] }),
-    /* @__PURE__ */ jsx2("div", { className: "sui-chat-status", role: "status", "aria-live": "polite", children: pending && !error ? strings.thinking : "" }),
+    /* @__PURE__ */ jsx2("div", { className: "sui-chat-status", role: "status", "aria-live": "polite", children: pending && !error ? formatStatus(statusText, strings) || strings.thinking : "" }),
     error && /* @__PURE__ */ jsxs2("p", { className: "sui-chat-error", children: [
       /* @__PURE__ */ jsx2(AlertCircle, { className: "sui-chat-icon-sm" }),
       " ",
@@ -989,7 +1015,10 @@ var CHAT_STRINGS = {
     loggingOptOutModalBody: "Hiermee stoppen we het opslaan van dit gesprek voor beoordeling, voor de rest van deze browsersessie. Je kunt de chat gewoon blijven gebruiken.",
     loggingOptOutConfirm: "Uitschakelen voor deze sessie",
     loggingOptOutCancel: "Annuleren",
-    loggingOptedOutNotice: "Opslaan is uitgeschakeld voor deze sessie."
+    loggingOptedOutNotice: "Opslaan is uitgeschakeld voor deze sessie.",
+    statusSearching: "Aan het zoeken\u2026",
+    statusFound: "{n} resultaten gevonden\u2026",
+    statusGenerating: "Antwoord aan het opstellen\u2026"
   },
   en: {
     title: "Ask your question",
@@ -1024,7 +1053,10 @@ var CHAT_STRINGS = {
     loggingOptOutModalBody: "This stops us from saving this conversation for review, for the rest of this browser session. You can keep chatting as normal.",
     loggingOptOutConfirm: "Turn off for this session",
     loggingOptOutCancel: "Cancel",
-    loggingOptedOutNotice: "Logging is turned off for this session."
+    loggingOptedOutNotice: "Logging is turned off for this session.",
+    statusSearching: "Searching\u2026",
+    statusFound: "{n} results found\u2026",
+    statusGenerating: "Preparing an answer\u2026"
   },
   ar: {
     title: "\u0627\u0637\u0631\u062D \u0633\u0624\u0627\u0644\u0643",
@@ -1059,7 +1091,10 @@ var CHAT_STRINGS = {
     loggingOptOutModalBody: "\u0633\u064A\u0624\u062F\u064A \u0647\u0630\u0627 \u0625\u0644\u0649 \u0625\u064A\u0642\u0627\u0641 \u062D\u0641\u0638 \u0647\u0630\u0647 \u0627\u0644\u0645\u062D\u0627\u062F\u062B\u0629 \u0644\u0644\u0645\u0631\u0627\u062C\u0639\u0629\u060C \u0644\u0628\u0642\u064A\u0629 \u062C\u0644\u0633\u0629 \u0627\u0644\u0645\u062A\u0635\u0641\u062D \u0647\u0630\u0647. \u064A\u0645\u0643\u0646\u0643 \u0627\u0644\u0627\u0633\u062A\u0645\u0631\u0627\u0631 \u0641\u064A \u0627\u0644\u062F\u0631\u062F\u0634\u0629 \u0643\u0627\u0644\u0645\u0639\u062A\u0627\u062F.",
     loggingOptOutConfirm: "\u0625\u064A\u0642\u0627\u0641 \u0644\u0647\u0630\u0647 \u0627\u0644\u062C\u0644\u0633\u0629",
     loggingOptOutCancel: "\u0625\u0644\u063A\u0627\u0621",
-    loggingOptedOutNotice: "\u062A\u0645 \u0625\u064A\u0642\u0627\u0641 \u0627\u0644\u062A\u0633\u062C\u064A\u0644 \u0644\u0647\u0630\u0647 \u0627\u0644\u062C\u0644\u0633\u0629."
+    loggingOptedOutNotice: "\u062A\u0645 \u0625\u064A\u0642\u0627\u0641 \u0627\u0644\u062A\u0633\u062C\u064A\u0644 \u0644\u0647\u0630\u0647 \u0627\u0644\u062C\u0644\u0633\u0629.",
+    statusSearching: "\u062C\u0627\u0631\u064D \u0627\u0644\u0628\u062D\u062B\u2026",
+    statusFound: "\u062A\u0645 \u0627\u0644\u0639\u062B\u0648\u0631 \u0639\u0644\u0649 {n} \u0646\u062A\u064A\u062C\u0629\u2026",
+    statusGenerating: "\u062C\u0627\u0631\u064D \u0625\u0639\u062F\u0627\u062F \u0627\u0644\u0625\u062C\u0627\u0628\u0629\u2026"
   },
   tr: {
     title: "Sorunuzu sorun",
@@ -1094,7 +1129,10 @@ var CHAT_STRINGS = {
     loggingOptOutModalBody: "Bu, bu taray\u0131c\u0131 oturumunun geri kalan\u0131nda g\xF6r\xFC\u015Fmenin incelenmek \xFCzere kaydedilmesini durdurur. Sohbete normal \u015Fekilde devam edebilirsin.",
     loggingOptOutConfirm: "Bu oturum i\xE7in kapat",
     loggingOptOutCancel: "\u0130ptal",
-    loggingOptedOutNotice: "Bu oturum i\xE7in kay\u0131t kapat\u0131ld\u0131."
+    loggingOptedOutNotice: "Bu oturum i\xE7in kay\u0131t kapat\u0131ld\u0131.",
+    statusSearching: "Aran\u0131yor\u2026",
+    statusFound: "{n} sonu\xE7 bulundu\u2026",
+    statusGenerating: "Yan\u0131t haz\u0131rlan\u0131yor\u2026"
   },
   fr: {
     title: "Posez votre question",
@@ -1129,7 +1167,10 @@ var CHAT_STRINGS = {
     loggingOptOutModalBody: "Cela emp\xEAchera l'enregistrement de cette conversation \xE0 des fins d'examen, pour le reste de cette session de navigateur. Vous pouvez continuer \xE0 discuter normalement.",
     loggingOptOutConfirm: "D\xE9sactiver pour cette session",
     loggingOptOutCancel: "Annuler",
-    loggingOptedOutNotice: "L'enregistrement est d\xE9sactiv\xE9 pour cette session."
+    loggingOptedOutNotice: "L'enregistrement est d\xE9sactiv\xE9 pour cette session.",
+    statusSearching: "Recherche en cours\u2026",
+    statusFound: "{n} r\xE9sultats trouv\xE9s\u2026",
+    statusGenerating: "Pr\xE9paration de la r\xE9ponse\u2026"
   },
   de: {
     title: "Stell deine Frage",
@@ -1164,7 +1205,10 @@ var CHAT_STRINGS = {
     loggingOptOutModalBody: "Dadurch wird dieses Gespr\xE4ch f\xFCr den Rest dieser Browsersitzung nicht mehr zur \xDCberpr\xFCfung gespeichert. Du kannst den Chat ganz normal weiter nutzen.",
     loggingOptOutConfirm: "F\xFCr diese Sitzung deaktivieren",
     loggingOptOutCancel: "Abbrechen",
-    loggingOptedOutNotice: "Die Protokollierung ist f\xFCr diese Sitzung deaktiviert."
+    loggingOptedOutNotice: "Die Protokollierung ist f\xFCr diese Sitzung deaktiviert.",
+    statusSearching: "Suche l\xE4uft\u2026",
+    statusFound: "{n} Ergebnisse gefunden\u2026",
+    statusGenerating: "Antwort wird vorbereitet\u2026"
   },
   es: {
     title: "Haz tu pregunta",
@@ -1199,7 +1243,10 @@ var CHAT_STRINGS = {
     loggingOptOutModalBody: "Esto evitar\xE1 que guardemos esta conversaci\xF3n para revisi\xF3n durante el resto de esta sesi\xF3n del navegador. Puedes seguir chateando con normalidad.",
     loggingOptOutConfirm: "Desactivar para esta sesi\xF3n",
     loggingOptOutCancel: "Cancelar",
-    loggingOptedOutNotice: "El registro est\xE1 desactivado para esta sesi\xF3n."
+    loggingOptedOutNotice: "El registro est\xE1 desactivado para esta sesi\xF3n.",
+    statusSearching: "Buscando\u2026",
+    statusFound: "{n} resultados encontrados\u2026",
+    statusGenerating: "Preparando una respuesta\u2026"
   },
   pt: {
     title: "Fa\xE7a a sua pergunta",
@@ -1234,7 +1281,10 @@ var CHAT_STRINGS = {
     loggingOptOutModalBody: "Isto impede que guardemos esta conversa para revis\xE3o, durante o resto desta sess\xE3o do navegador. Pode continuar a conversar normalmente.",
     loggingOptOutConfirm: "Desativar para esta sess\xE3o",
     loggingOptOutCancel: "Cancelar",
-    loggingOptedOutNotice: "O registo est\xE1 desativado para esta sess\xE3o."
+    loggingOptedOutNotice: "O registo est\xE1 desativado para esta sess\xE3o.",
+    statusSearching: "A pesquisar\u2026",
+    statusFound: "{n} resultados encontrados\u2026",
+    statusGenerating: "A preparar uma resposta\u2026"
   },
   pl: {
     title: "Zadaj pytanie",
@@ -1269,7 +1319,10 @@ var CHAT_STRINGS = {
     loggingOptOutModalBody: "Spowoduje to zaprzestanie zapisywania tej rozmowy do przegl\u0105du przez reszt\u0119 tej sesji przegl\u0105darki. Mo\u017Cesz normalnie kontynuowa\u0107 czat.",
     loggingOptOutConfirm: "Wy\u0142\u0105cz na t\u0119 sesj\u0119",
     loggingOptOutCancel: "Anuluj",
-    loggingOptedOutNotice: "Zapisywanie jest wy\u0142\u0105czone na t\u0119 sesj\u0119."
+    loggingOptedOutNotice: "Zapisywanie jest wy\u0142\u0105czone na t\u0119 sesj\u0119.",
+    statusSearching: "Wyszukiwanie\u2026",
+    statusFound: "Znaleziono {n} wynik\xF3w\u2026",
+    statusGenerating: "Przygotowywanie odpowiedzi\u2026"
   },
   ru: {
     title: "\u0417\u0430\u0434\u0430\u0439\u0442\u0435 \u0441\u0432\u043E\u0439 \u0432\u043E\u043F\u0440\u043E\u0441",
@@ -1304,7 +1357,10 @@ var CHAT_STRINGS = {
     loggingOptOutModalBody: "\u042D\u0442\u043E \u043E\u0441\u0442\u0430\u043D\u043E\u0432\u0438\u0442 \u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u0438\u0435 \u044D\u0442\u043E\u0433\u043E \u0440\u0430\u0437\u0433\u043E\u0432\u043E\u0440\u0430 \u0434\u043B\u044F \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438 \u043D\u0430 \u043E\u0441\u0442\u0430\u0432\u0448\u0443\u044E\u0441\u044F \u0447\u0430\u0441\u0442\u044C \u044D\u0442\u043E\u0439 \u0441\u0435\u0441\u0441\u0438\u0438 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0430. \u0412\u044B \u043C\u043E\u0436\u0435\u0442\u0435 \u043F\u0440\u043E\u0434\u043E\u043B\u0436\u0430\u0442\u044C \u043E\u0431\u0449\u0430\u0442\u044C\u0441\u044F \u0432 \u043E\u0431\u044B\u0447\u043D\u043E\u043C \u0440\u0435\u0436\u0438\u043C\u0435.",
     loggingOptOutConfirm: "\u041E\u0442\u043A\u043B\u044E\u0447\u0438\u0442\u044C \u0434\u043B\u044F \u044D\u0442\u043E\u0439 \u0441\u0435\u0441\u0441\u0438\u0438",
     loggingOptOutCancel: "\u041E\u0442\u043C\u0435\u043D\u0430",
-    loggingOptedOutNotice: "\u0421\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u0438\u0435 \u043E\u0442\u043A\u043B\u044E\u0447\u0435\u043D\u043E \u0434\u043B\u044F \u044D\u0442\u043E\u0439 \u0441\u0435\u0441\u0441\u0438\u0438."
+    loggingOptedOutNotice: "\u0421\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u0438\u0435 \u043E\u0442\u043A\u043B\u044E\u0447\u0435\u043D\u043E \u0434\u043B\u044F \u044D\u0442\u043E\u0439 \u0441\u0435\u0441\u0441\u0438\u0438.",
+    statusSearching: "\u0418\u0434\u0451\u0442 \u043F\u043E\u0438\u0441\u043A\u2026",
+    statusFound: "\u041D\u0430\u0439\u0434\u0435\u043D\u043E \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442\u043E\u0432: {n}\u2026",
+    statusGenerating: "\u041F\u043E\u0434\u0433\u043E\u0442\u043E\u0432\u043A\u0430 \u043E\u0442\u0432\u0435\u0442\u0430\u2026"
   },
   zh: {
     title: "\u63D0\u51FA\u60A8\u7684\u95EE\u9898",
@@ -1339,12 +1395,15 @@ var CHAT_STRINGS = {
     loggingOptOutModalBody: "\u8FD9\u5C06\u5728\u672C\u6B21\u6D4F\u89C8\u5668\u4F1A\u8BDD\u7684\u5269\u4F59\u65F6\u95F4\u5185\u505C\u6B62\u4FDD\u5B58\u6B64\u5BF9\u8BDD\u4EE5\u4F9B\u5BA1\u6838\u3002\u60A8\u4ECD\u7136\u53EF\u4EE5\u6B63\u5E38\u804A\u5929\u3002",
     loggingOptOutConfirm: "\u672C\u6B21\u4F1A\u8BDD\u5173\u95ED",
     loggingOptOutCancel: "\u53D6\u6D88",
-    loggingOptedOutNotice: "\u672C\u6B21\u4F1A\u8BDD\u8BB0\u5F55\u5DF2\u5173\u95ED\u3002"
+    loggingOptedOutNotice: "\u672C\u6B21\u4F1A\u8BDD\u8BB0\u5F55\u5DF2\u5173\u95ED\u3002",
+    statusSearching: "\u6B63\u5728\u641C\u7D22\u2026",
+    statusFound: "\u627E\u5230 {n} \u4E2A\u7ED3\u679C\u2026",
+    statusGenerating: "\u6B63\u5728\u51C6\u5907\u7B54\u6848\u2026"
   }
 };
 
 // src/version.js
-var SHARED_UI_VERSION = "0.4.0";
+var SHARED_UI_VERSION = "0.5.0";
 export {
   CHAT_STRINGS,
   ChatInterface_default as ChatInterface,

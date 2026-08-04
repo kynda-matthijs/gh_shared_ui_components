@@ -53,6 +53,16 @@ import { STARTER_ICONS } from './starterIcons.js';
 //     tuning panel change retrievalOverrides then replay without retyping, with both
 //     attempts left visible in the transcript for comparison.
 //
+// chatProxyEndpoint/chatProxySettings (optional): routes sendQuery through a
+// server-side proxy (see admin_client's src/app/api/chat/route.js) instead of
+// calling Cloudflare's public /chat/completions endpoint directly — used for
+// adaptive, retrieval-confidence-based model selection, which needs a secret
+// (AI Gateway token) that can't live in the browser. When set, the proxy also emits
+// `status` SSE events ("searching"/"found:N"/"generating") shown via formatStatus()
+// in place of strings.thinking, and its own `chunks` event in the same shape the
+// direct path emits, so citations work unchanged either way. Both null (the
+// default) is the unmodified direct-to-Cloudflare path.
+//
 // SECURITY: the `folder: public/` retrieval filter below is NOT a prop and must never
 // become one. It's the only thing standing between this being a safe public/preview
 // chatbot and a leak of internal case notes indexed alongside it (see the sync module,
@@ -81,6 +91,9 @@ const DEFAULT_STRINGS = {
     loggingOptOutConfirm: 'Turn off for this session',
     loggingOptOutCancel: 'Cancel',
     loggingOptedOutNotice: 'Logging is turned off for this session.',
+    statusSearching: 'Searching…',
+    statusFound: '{n} results found…',
+    statusGenerating: 'Preparing an answer…',
 };
 
 // ── Minimal markdown renderer ────────────────────────────────────────────
@@ -118,6 +131,20 @@ function parseSSEBlock(block) {
         else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
     }
     return dataLines.length ? { eventName, data: dataLines.join('\n') } : null;
+}
+
+// Translates a proxy `status` SSE event (see admin_client's src/app/api/chat/route.js
+// — raw values like "searching"/"found:3"/"generating"/"error:400") into the current
+// language's UI copy. Only ever populated when chatProxyEndpoint is in play; falls
+// back to strings.thinking for anything unrecognized (including the direct-to-
+// Cloudflare path, where statusText is always '').
+function formatStatus(status, strings) {
+    if (!status) return '';
+    if (status === 'searching') return strings.statusSearching ?? strings.thinking;
+    if (status === 'generating') return strings.statusGenerating ?? strings.thinking;
+    const found = status.match(/^found:(\d+)$/);
+    if (found) return (strings.statusFound ?? strings.thinking).replace('{n}', found[1]);
+    return strings.thinking;
 }
 
 function dedupeSources(chunks) {
@@ -421,6 +448,8 @@ const ChatInterface = forwardRef(function ChatInterface({
     retrievalOverrides = null,
     onSearchChunks = null,
     botName = '',
+    chatProxyEndpoint = null,
+    chatProxySettings = null,
 }, ref) {
     // botName overrides just the one strings.assistant key (the speaker label shown
     // next to each of the bot's messages) rather than requiring the consuming app to
@@ -455,6 +484,11 @@ const ChatInterface = forwardRef(function ChatInterface({
     const [previewQuestion, setPreviewQuestion] = useState('');
     const [streaming, setStreaming] = useState('');
     const [pending,   setPending]   = useState(false);
+    // Only ever populated when chatProxyEndpoint is in play (see sendQuery) — the
+    // proxy's `status` SSE events ("searching"/"found:N"/"generating"), shown in
+    // place of strings.thinking so the extra retrieval round-trip reads as visible
+    // progress rather than a stall. Stays '' for the direct-to-Cloudflare path.
+    const [statusText, setStatusText] = useState('');
     const [error,     setError]     = useState('');
     const logRef   = useRef(null);
     const inputRef = useRef(null);
@@ -523,21 +557,39 @@ const ChatInterface = forwardRef(function ChatInterface({
         setStreaming(' ');
         scrollToBottom();
 
-        const apiUrl = `https://${aiSearchId}.search.ai.cloudflare.com/chat/completions`;
-        const body = {
-            messages: [
-                { role: 'system', content: buildSystemMessage(languageName, intake, systemPrompt, extraPrompt) },
-                ...nextMessages.map(m => ({ role: m.role, content: m.content })),
-            ],
-            stream: true,
-            // retrievalOverrides (max_num_results/match_threshold/etc, per Cloudflare's
-            // ai_search_options.retrieval schema) is a per-request debugging/tuning escape
-            // hatch — see admin_client's AiChatPreview.jsx tuning panel. Never used by the
-            // public mini_site widget; `filters` is always present regardless, since the
-            // public/-only retrieval scope (see module SECURITY note) must never be
-            // overridable by whatever the caller passes in.
-            ai_search_options: { retrieval: { ...retrievalOverrides, filters: PUBLIC_FILTER } },
-        };
+        const fullSystemPrompt = buildSystemMessage(languageName, intake, systemPrompt, extraPrompt);
+
+        // chatProxyEndpoint (optional): routes through a server-side proxy instead of
+        // Cloudflare's public endpoint directly — see admin_client's
+        // src/app/api/chat/route.js. It does its own retrieval + adaptive model
+        // selection and builds the final messages array itself, so it only needs the
+        // conversation + the fully-resolved system prompt, not ai_search_options.
+        // chatProxySettings is opaque here — whatever shape the proxy expects (see
+        // registry.js's block.adaptive), this component just forwards it as-is.
+        const usingProxy = !!chatProxyEndpoint;
+        const apiUrl = usingProxy
+            ? chatProxyEndpoint
+            : `https://${aiSearchId}.search.ai.cloudflare.com/chat/completions`;
+        const body = usingProxy
+            ? {
+                aiSearchId,
+                messages: nextMessages.map(m => ({ role: m.role, content: m.content })),
+                systemPrompt: fullSystemPrompt,
+                settings: chatProxySettings,
+            }
+            : {
+                messages: [
+                    { role: 'system', content: fullSystemPrompt },
+                    ...nextMessages.map(m => ({ role: m.role, content: m.content })),
+                ],
+                stream: true,
+                // retrievalOverrides (max_num_results/match_threshold/etc, per Cloudflare's
+                // ai_search_options.retrieval schema) is a per-request debugging/tuning
+                // escape hatch. `filters` is always present regardless, since the
+                // public/-only retrieval scope (see module SECURITY note) must never be
+                // overridable by whatever the caller passes in.
+                ai_search_options: { retrieval: { ...retrievalOverrides, filters: PUBLIC_FILTER } },
+            };
 
         let assistantText = '';
         let chunks = [];
@@ -565,6 +617,16 @@ const ChatInterface = forwardRef(function ChatInterface({
                         try { chunks = JSON.parse(parsed.data); } catch { /* ignore */ }
                         continue;
                     }
+                    // status/meta: only ever sent by chatProxyEndpoint (see route.js) — a
+                    // human-readable progress label ("searching"/"found:3"/"generating")
+                    // shown instead of strings.thinking. meta carries structured diagnostics
+                    // (bucket/model/scores) that this component doesn't otherwise use, so
+                    // it's parsed but intentionally discarded here.
+                    if (parsed.eventName === 'status') {
+                        setStatusText(parsed.data);
+                        continue;
+                    }
+                    if (parsed.eventName === 'meta') continue;
                     try {
                         const frame = JSON.parse(parsed.data);
                         const delta = frame.choices?.[0]?.delta?.content;
@@ -588,10 +650,11 @@ const ChatInterface = forwardRef(function ChatInterface({
             setError(strings.error);
         } finally {
             setStreaming('');
+            setStatusText('');
             setPending(false);
             scrollToBottom();
         }
-    }, [pending, messages, aiSearchId, languageName, persistKey, strings.error, scrollToBottom, intake, chatLoggingEnabled, chatLogEndpoint, systemPrompt, loggingOptedOut, retrievalOverrides, onSearchChunks]);
+    }, [pending, messages, aiSearchId, languageName, persistKey, strings.error, scrollToBottom, intake, chatLoggingEnabled, chatLogEndpoint, systemPrompt, loggingOptedOut, retrievalOverrides, onSearchChunks, chatProxyEndpoint, chatProxySettings]);
 
     const handleFormSubmit = useCallback((e) => {
         e.preventDefault();
@@ -665,7 +728,7 @@ const ChatInterface = forwardRef(function ChatInterface({
             </div>
 
             <div className="sui-chat-status" role="status" aria-live="polite">
-                {pending && !error ? strings.thinking : ''}
+                {pending && !error ? (formatStatus(statusText, strings) || strings.thinking) : ''}
             </div>
 
             {error && (

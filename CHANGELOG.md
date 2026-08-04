@@ -12,6 +12,24 @@ the one you're actively working on. Forgetting one leaves it silently rendering 
 stale build with no error — check its installed version against this file with
 `grep '"version"' node_modules/stappie-shared-ui/package.json`.
 
+## 0.5.0 — 2026-08-04
+
+Graduates the adaptive chat proxy (previously a standalone admin_client experiment)
+into a real, opt-in mode of `ChatInterface`:
+
+- New `chatProxyEndpoint`/`chatProxySettings` props — when set, `sendQuery` POSTs to
+  the proxy (`{ aiSearchId, messages, systemPrompt, settings }`) instead of calling
+  Cloudflare's public `/chat/completions` directly. `null`/unset (the default) is the
+  unmodified direct path — zero behavior change for existing consumers.
+- The proxy's `status` SSE events (`searching`/`found:N`/`generating`) are now shown
+  in place of `strings.thinking` via a new `formatStatus()` helper, so the extra
+  retrieval round-trip reads as visible progress rather than a stall. Added
+  `statusSearching`/`statusFound`/`statusGenerating` to all 11 `CHAT_STRINGS`
+  languages plus `DEFAULT_STRINGS`.
+- The proxy's `chunks` event reuses the exact shape/name the direct path already
+  emits, so citations (`dedupeSources`/`SourceCard`) work identically either way —
+  no changes needed to that code.
+
 ## 0.4.0 — 2026-08-04
 
 - New `botName` prop — overrides `strings.assistant` (the speaker label shown next to
