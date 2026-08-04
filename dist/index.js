@@ -111,7 +111,14 @@ var DEFAULT_STRINGS = {
   nameLabel: "What should we call you?",
   ageLabel: "Your age",
   genderLabel: "Your gender",
-  intakeNotStored: "Optional. Never stored."
+  intakeNotStored: "Optional. Never stored.",
+  loggingNotice: "We may use this conversation to help improve our services.",
+  loggingOptOutLink: "Opt out for this session",
+  loggingOptOutModalTitle: "Turn off conversation logging?",
+  loggingOptOutModalBody: "This stops us from saving this conversation for review, for the rest of this browser session. You can keep chatting as normal.",
+  loggingOptOutConfirm: "Turn off for this session",
+  loggingOptOutCancel: "Cancel",
+  loggingOptedOutNotice: "Logging is turned off for this session."
 };
 function escapeHtml(s) {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
@@ -198,6 +205,20 @@ function logChatTurn(endpoint, sessionId, language, messages) {
       keepalive: true
     }).catch(() => {
     });
+  } catch {
+  }
+}
+var LOGGING_OPT_OUT_KEY = "sui-chat-logging-opted-out";
+function isLoggingOptedOut() {
+  try {
+    return sessionStorage.getItem(LOGGING_OPT_OUT_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+function persistLoggingOptOut() {
+  try {
+    sessionStorage.setItem(LOGGING_OPT_OUT_KEY, "1");
   } catch {
   }
 }
@@ -315,6 +336,18 @@ function Message({ role, content, chunks, streaming, strings, moreInfoHrefPatter
     ] })
   ] });
 }
+function LoggingOptOutModal({ strings, titleId, onConfirm, onCancel }) {
+  return /* @__PURE__ */ jsx2("div", { className: "sui-chat-optout-overlay", onClick: (e) => {
+    if (e.target === e.currentTarget) onCancel();
+  }, children: /* @__PURE__ */ jsxs2("div", { className: "sui-chat-optout-modal", role: "dialog", "aria-modal": "true", "aria-labelledby": titleId, children: [
+    /* @__PURE__ */ jsx2("h3", { id: titleId, className: "sui-chat-optout-title", children: strings.loggingOptOutModalTitle }),
+    /* @__PURE__ */ jsx2("p", { className: "sui-chat-optout-body", children: strings.loggingOptOutModalBody }),
+    /* @__PURE__ */ jsxs2("div", { className: "sui-chat-optout-actions", children: [
+      /* @__PURE__ */ jsx2("button", { type: "button", className: "sui-chat-optout-cancel", onClick: onCancel, children: strings.loggingOptOutCancel }),
+      /* @__PURE__ */ jsx2("button", { type: "button", className: "sui-chat-optout-confirm", onClick: onConfirm, children: strings.loggingOptOutConfirm })
+    ] })
+  ] }) });
+}
 function ChatInterface({
   aiSearchId,
   languageName = "English",
@@ -352,6 +385,17 @@ function ChatInterface({
   const inputId = useId();
   const sessionIdRef = useRef(null);
   if (sessionIdRef.current == null) sessionIdRef.current = getOrCreateLogSessionId(persistKey);
+  const [loggingOptedOut, setLoggingOptedOutState] = useState(false);
+  const [optOutModalOpen, setOptOutModalOpen] = useState(false);
+  const optOutTitleId = useId();
+  useEffect(() => {
+    if (chatLoggingEnabled) setLoggingOptedOutState(isLoggingOptedOut());
+  }, [chatLoggingEnabled]);
+  const confirmLoggingOptOut = useCallback(() => {
+    persistLoggingOptOut();
+    setLoggingOptedOutState(true);
+    setOptOutModalOpen(false);
+  }, []);
   const scrollToBottom = useCallback(() => {
     requestAnimationFrame(() => {
       if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
@@ -443,7 +487,7 @@ function ChatInterface({
       const withAssistant = [...nextMessages, { role: "assistant", content: assistantText, chunks }];
       setMessages(withAssistant);
       saveMessages(persistKey, withAssistant);
-      if (chatLoggingEnabled) {
+      if (chatLoggingEnabled && !loggingOptedOut) {
         logChatTurn(chatLogEndpoint, sessionIdRef.current, languageName, withAssistant);
       }
     } catch (err) {
@@ -453,7 +497,7 @@ function ChatInterface({
       setPending(false);
       scrollToBottom();
     }
-  }, [pending, messages, aiSearchId, languageName, persistKey, strings.error, scrollToBottom, intake, chatLoggingEnabled, chatLogEndpoint, systemPrompt]);
+  }, [pending, messages, aiSearchId, languageName, persistKey, strings.error, scrollToBottom, intake, chatLoggingEnabled, chatLogEndpoint, systemPrompt, loggingOptedOut]);
   const handleFormSubmit = useCallback((e) => {
     e.preventDefault();
     const extra = pendingExtraPromptRef.current;
@@ -566,7 +610,27 @@ function ChatInterface({
       ] }),
       /* @__PURE__ */ jsx2("button", { type: "submit", className: "sui-chat-send-btn", disabled: pending || !input.trim(), "aria-label": strings.send, children: pending ? /* @__PURE__ */ jsx2(Loader2, { className: "sui-chat-icon sui-chat-spin" }) : /* @__PURE__ */ jsx2(Send, { className: "sui-chat-icon" }) })
     ] }),
-    /* @__PURE__ */ jsx2("p", { className: "sui-chat-disclaimer", children: strings.disclaimer })
+    /* @__PURE__ */ jsxs2("p", { className: "sui-chat-disclaimer", children: [
+      strings.disclaimer,
+      chatLoggingEnabled && (loggingOptedOut ? /* @__PURE__ */ jsxs2("span", { className: "sui-chat-logging-note", children: [
+        " ",
+        strings.loggingOptedOutNotice
+      ] }) : /* @__PURE__ */ jsxs2("span", { className: "sui-chat-logging-note", children: [
+        " ",
+        strings.loggingNotice,
+        " ",
+        /* @__PURE__ */ jsx2("button", { type: "button", className: "sui-chat-logging-optout-link", onClick: () => setOptOutModalOpen(true), children: strings.loggingOptOutLink })
+      ] }))
+    ] }),
+    optOutModalOpen && /* @__PURE__ */ jsx2(
+      LoggingOptOutModal,
+      {
+        strings,
+        titleId: optOutTitleId,
+        onConfirm: confirmLoggingOptOut,
+        onCancel: () => setOptOutModalOpen(false)
+      }
+    )
   ] });
   if (!isBubble) {
     return /* @__PURE__ */ jsx2("section", { className: "sui-chat-widget sui-chat-widget--chat-page", dir, children: panel });
@@ -901,7 +965,14 @@ var CHAT_STRINGS = {
     nameLabel: "Hoe mogen we je noemen?",
     ageLabel: "Wat is je leeftijd?",
     genderLabel: "Wat is je geslacht?",
-    intakeNotStored: "Optioneel. Wordt niet opgeslagen."
+    intakeNotStored: "Optioneel. Wordt niet opgeslagen.",
+    loggingNotice: "We kunnen dit gesprek gebruiken om onze dienstverlening te verbeteren.",
+    loggingOptOutLink: "Afmelden voor deze sessie",
+    loggingOptOutModalTitle: "Gesprek niet opslaan?",
+    loggingOptOutModalBody: "Hiermee stoppen we het opslaan van dit gesprek voor beoordeling, voor de rest van deze browsersessie. Je kunt de chat gewoon blijven gebruiken.",
+    loggingOptOutConfirm: "Uitschakelen voor deze sessie",
+    loggingOptOutCancel: "Annuleren",
+    loggingOptedOutNotice: "Opslaan is uitgeschakeld voor deze sessie."
   },
   en: {
     title: "Ask your question",
@@ -929,7 +1000,14 @@ var CHAT_STRINGS = {
     nameLabel: "What should we call you?",
     ageLabel: "Your age",
     genderLabel: "Your gender",
-    intakeNotStored: "Optional. Never stored."
+    intakeNotStored: "Optional. Never stored.",
+    loggingNotice: "We may use this conversation to help improve our services.",
+    loggingOptOutLink: "Opt out for this session",
+    loggingOptOutModalTitle: "Turn off conversation logging?",
+    loggingOptOutModalBody: "This stops us from saving this conversation for review, for the rest of this browser session. You can keep chatting as normal.",
+    loggingOptOutConfirm: "Turn off for this session",
+    loggingOptOutCancel: "Cancel",
+    loggingOptedOutNotice: "Logging is turned off for this session."
   },
   ar: {
     title: "\u0627\u0637\u0631\u062D \u0633\u0624\u0627\u0644\u0643",
@@ -957,7 +1035,14 @@ var CHAT_STRINGS = {
     nameLabel: "\u0643\u064A\u0641 \u0646\u0646\u0627\u062F\u064A\u0643\u061F",
     ageLabel: "\u0639\u0645\u0631\u0643",
     genderLabel: "\u062C\u0646\u0633\u0643",
-    intakeNotStored: "\u0627\u062E\u062A\u064A\u0627\u0631\u064A. \u0644\u0627 \u064A\u062A\u0645 \u062D\u0641\u0638\u0647 \u0623\u0628\u062F\u064B\u0627."
+    intakeNotStored: "\u0627\u062E\u062A\u064A\u0627\u0631\u064A. \u0644\u0627 \u064A\u062A\u0645 \u062D\u0641\u0638\u0647 \u0623\u0628\u062F\u064B\u0627.",
+    loggingNotice: "\u0642\u062F \u0646\u0633\u062A\u062E\u062F\u0645 \u0647\u0630\u0647 \u0627\u0644\u0645\u062D\u0627\u062F\u062B\u0629 \u0644\u062A\u062D\u0633\u064A\u0646 \u062E\u062F\u0645\u0627\u062A\u0646\u0627.",
+    loggingOptOutLink: "\u0625\u0644\u063A\u0627\u0621 \u0627\u0644\u0627\u0634\u062A\u0631\u0627\u0643 \u0644\u0647\u0630\u0647 \u0627\u0644\u062C\u0644\u0633\u0629",
+    loggingOptOutModalTitle: "\u0625\u064A\u0642\u0627\u0641 \u062A\u0633\u062C\u064A\u0644 \u0627\u0644\u0645\u062D\u0627\u062F\u062B\u0629\u061F",
+    loggingOptOutModalBody: "\u0633\u064A\u0624\u062F\u064A \u0647\u0630\u0627 \u0625\u0644\u0649 \u0625\u064A\u0642\u0627\u0641 \u062D\u0641\u0638 \u0647\u0630\u0647 \u0627\u0644\u0645\u062D\u0627\u062F\u062B\u0629 \u0644\u0644\u0645\u0631\u0627\u062C\u0639\u0629\u060C \u0644\u0628\u0642\u064A\u0629 \u062C\u0644\u0633\u0629 \u0627\u0644\u0645\u062A\u0635\u0641\u062D \u0647\u0630\u0647. \u064A\u0645\u0643\u0646\u0643 \u0627\u0644\u0627\u0633\u062A\u0645\u0631\u0627\u0631 \u0641\u064A \u0627\u0644\u062F\u0631\u062F\u0634\u0629 \u0643\u0627\u0644\u0645\u0639\u062A\u0627\u062F.",
+    loggingOptOutConfirm: "\u0625\u064A\u0642\u0627\u0641 \u0644\u0647\u0630\u0647 \u0627\u0644\u062C\u0644\u0633\u0629",
+    loggingOptOutCancel: "\u0625\u0644\u063A\u0627\u0621",
+    loggingOptedOutNotice: "\u062A\u0645 \u0625\u064A\u0642\u0627\u0641 \u0627\u0644\u062A\u0633\u062C\u064A\u0644 \u0644\u0647\u0630\u0647 \u0627\u0644\u062C\u0644\u0633\u0629."
   },
   tr: {
     title: "Sorunuzu sorun",
@@ -985,7 +1070,14 @@ var CHAT_STRINGS = {
     nameLabel: "Sana nas\u0131l hitap edelim?",
     ageLabel: "Ya\u015F\u0131n",
     genderLabel: "Cinsiyetin",
-    intakeNotStored: "\u0130ste\u011Fe ba\u011Fl\u0131. Asla saklanmaz."
+    intakeNotStored: "\u0130ste\u011Fe ba\u011Fl\u0131. Asla saklanmaz.",
+    loggingNotice: "Bu g\xF6r\xFC\u015Fmeyi hizmetlerimizi geli\u015Ftirmek i\xE7in kullanabiliriz.",
+    loggingOptOutLink: "Bu oturum i\xE7in devre d\u0131\u015F\u0131 b\u0131rak",
+    loggingOptOutModalTitle: "G\xF6r\xFC\u015Fme kayd\u0131 kapat\u0131ls\u0131n m\u0131?",
+    loggingOptOutModalBody: "Bu, bu taray\u0131c\u0131 oturumunun geri kalan\u0131nda g\xF6r\xFC\u015Fmenin incelenmek \xFCzere kaydedilmesini durdurur. Sohbete normal \u015Fekilde devam edebilirsin.",
+    loggingOptOutConfirm: "Bu oturum i\xE7in kapat",
+    loggingOptOutCancel: "\u0130ptal",
+    loggingOptedOutNotice: "Bu oturum i\xE7in kay\u0131t kapat\u0131ld\u0131."
   },
   fr: {
     title: "Posez votre question",
@@ -1013,7 +1105,14 @@ var CHAT_STRINGS = {
     nameLabel: "Comment devons-nous vous appeler ?",
     ageLabel: "Votre \xE2ge",
     genderLabel: "Votre genre",
-    intakeNotStored: "Facultatif. Jamais enregistr\xE9."
+    intakeNotStored: "Facultatif. Jamais enregistr\xE9.",
+    loggingNotice: "Nous pouvons utiliser cette conversation pour am\xE9liorer nos services.",
+    loggingOptOutLink: "Se d\xE9sinscrire pour cette session",
+    loggingOptOutModalTitle: "D\xE9sactiver l'enregistrement de la conversation ?",
+    loggingOptOutModalBody: "Cela emp\xEAchera l'enregistrement de cette conversation \xE0 des fins d'examen, pour le reste de cette session de navigateur. Vous pouvez continuer \xE0 discuter normalement.",
+    loggingOptOutConfirm: "D\xE9sactiver pour cette session",
+    loggingOptOutCancel: "Annuler",
+    loggingOptedOutNotice: "L'enregistrement est d\xE9sactiv\xE9 pour cette session."
   },
   de: {
     title: "Stell deine Frage",
@@ -1041,7 +1140,14 @@ var CHAT_STRINGS = {
     nameLabel: "Wie d\xFCrfen wir dich nennen?",
     ageLabel: "Dein Alter",
     genderLabel: "Dein Geschlecht",
-    intakeNotStored: "Optional. Wird nie gespeichert."
+    intakeNotStored: "Optional. Wird nie gespeichert.",
+    loggingNotice: "Wir k\xF6nnen dieses Gespr\xE4ch nutzen, um unsere Dienste zu verbessern.",
+    loggingOptOutLink: "F\xFCr diese Sitzung abmelden",
+    loggingOptOutModalTitle: "Gespr\xE4chsprotokollierung deaktivieren?",
+    loggingOptOutModalBody: "Dadurch wird dieses Gespr\xE4ch f\xFCr den Rest dieser Browsersitzung nicht mehr zur \xDCberpr\xFCfung gespeichert. Du kannst den Chat ganz normal weiter nutzen.",
+    loggingOptOutConfirm: "F\xFCr diese Sitzung deaktivieren",
+    loggingOptOutCancel: "Abbrechen",
+    loggingOptedOutNotice: "Die Protokollierung ist f\xFCr diese Sitzung deaktiviert."
   },
   es: {
     title: "Haz tu pregunta",
@@ -1069,7 +1175,14 @@ var CHAT_STRINGS = {
     nameLabel: "\xBFC\xF3mo quieres que te llamemos?",
     ageLabel: "Tu edad",
     genderLabel: "Tu g\xE9nero",
-    intakeNotStored: "Opcional. Nunca se guarda."
+    intakeNotStored: "Opcional. Nunca se guarda.",
+    loggingNotice: "Podemos usar esta conversaci\xF3n para mejorar nuestros servicios.",
+    loggingOptOutLink: "Darse de baja para esta sesi\xF3n",
+    loggingOptOutModalTitle: "\xBFDesactivar el registro de la conversaci\xF3n?",
+    loggingOptOutModalBody: "Esto evitar\xE1 que guardemos esta conversaci\xF3n para revisi\xF3n durante el resto de esta sesi\xF3n del navegador. Puedes seguir chateando con normalidad.",
+    loggingOptOutConfirm: "Desactivar para esta sesi\xF3n",
+    loggingOptOutCancel: "Cancelar",
+    loggingOptedOutNotice: "El registro est\xE1 desactivado para esta sesi\xF3n."
   },
   pt: {
     title: "Fa\xE7a a sua pergunta",
@@ -1097,7 +1210,14 @@ var CHAT_STRINGS = {
     nameLabel: "Como podemos cham\xE1-lo(a)?",
     ageLabel: "A sua idade",
     genderLabel: "O seu g\xE9nero",
-    intakeNotStored: "Opcional. Nunca \xE9 guardado."
+    intakeNotStored: "Opcional. Nunca \xE9 guardado.",
+    loggingNotice: "Podemos utilizar esta conversa para melhorar os nossos servi\xE7os.",
+    loggingOptOutLink: "Cancelar para esta sess\xE3o",
+    loggingOptOutModalTitle: "Desativar o registo da conversa?",
+    loggingOptOutModalBody: "Isto impede que guardemos esta conversa para revis\xE3o, durante o resto desta sess\xE3o do navegador. Pode continuar a conversar normalmente.",
+    loggingOptOutConfirm: "Desativar para esta sess\xE3o",
+    loggingOptOutCancel: "Cancelar",
+    loggingOptedOutNotice: "O registo est\xE1 desativado para esta sess\xE3o."
   },
   pl: {
     title: "Zadaj pytanie",
@@ -1125,7 +1245,14 @@ var CHAT_STRINGS = {
     nameLabel: "Jak mamy si\u0119 do ciebie zwraca\u0107?",
     ageLabel: "Tw\xF3j wiek",
     genderLabel: "Twoja p\u0142e\u0107",
-    intakeNotStored: "Opcjonalne. Nigdy nie zapisywane."
+    intakeNotStored: "Opcjonalne. Nigdy nie zapisywane.",
+    loggingNotice: "Mo\u017Cemy wykorzysta\u0107 t\u0119 rozmow\u0119 do ulepszenia naszych us\u0142ug.",
+    loggingOptOutLink: "Zrezygnuj na t\u0119 sesj\u0119",
+    loggingOptOutModalTitle: "Wy\u0142\u0105czy\u0107 zapisywanie rozmowy?",
+    loggingOptOutModalBody: "Spowoduje to zaprzestanie zapisywania tej rozmowy do przegl\u0105du przez reszt\u0119 tej sesji przegl\u0105darki. Mo\u017Cesz normalnie kontynuowa\u0107 czat.",
+    loggingOptOutConfirm: "Wy\u0142\u0105cz na t\u0119 sesj\u0119",
+    loggingOptOutCancel: "Anuluj",
+    loggingOptedOutNotice: "Zapisywanie jest wy\u0142\u0105czone na t\u0119 sesj\u0119."
   },
   ru: {
     title: "\u0417\u0430\u0434\u0430\u0439\u0442\u0435 \u0441\u0432\u043E\u0439 \u0432\u043E\u043F\u0440\u043E\u0441",
@@ -1153,7 +1280,14 @@ var CHAT_STRINGS = {
     nameLabel: "\u041A\u0430\u043A \u043A \u0432\u0430\u043C \u043E\u0431\u0440\u0430\u0449\u0430\u0442\u044C\u0441\u044F?",
     ageLabel: "\u0412\u0430\u0448 \u0432\u043E\u0437\u0440\u0430\u0441\u0442",
     genderLabel: "\u0412\u0430\u0448 \u043F\u043E\u043B",
-    intakeNotStored: "\u041D\u0435\u043E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u043E. \u041D\u0438\u043A\u043E\u0433\u0434\u0430 \u043D\u0435 \u0441\u043E\u0445\u0440\u0430\u043D\u044F\u0435\u0442\u0441\u044F."
+    intakeNotStored: "\u041D\u0435\u043E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u043E. \u041D\u0438\u043A\u043E\u0433\u0434\u0430 \u043D\u0435 \u0441\u043E\u0445\u0440\u0430\u043D\u044F\u0435\u0442\u0441\u044F.",
+    loggingNotice: "\u041C\u044B \u043C\u043E\u0436\u0435\u043C \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u044C \u044D\u0442\u043E\u0442 \u0440\u0430\u0437\u0433\u043E\u0432\u043E\u0440 \u0434\u043B\u044F \u0443\u043B\u0443\u0447\u0448\u0435\u043D\u0438\u044F \u043D\u0430\u0448\u0438\u0445 \u0443\u0441\u043B\u0443\u0433.",
+    loggingOptOutLink: "\u041E\u0442\u043A\u0430\u0437\u0430\u0442\u044C\u0441\u044F \u043D\u0430 \u044D\u0442\u0443 \u0441\u0435\u0441\u0441\u0438\u044E",
+    loggingOptOutModalTitle: "\u041E\u0442\u043A\u043B\u044E\u0447\u0438\u0442\u044C \u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u0438\u0435 \u0440\u0430\u0437\u0433\u043E\u0432\u043E\u0440\u0430?",
+    loggingOptOutModalBody: "\u042D\u0442\u043E \u043E\u0441\u0442\u0430\u043D\u043E\u0432\u0438\u0442 \u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u0438\u0435 \u044D\u0442\u043E\u0433\u043E \u0440\u0430\u0437\u0433\u043E\u0432\u043E\u0440\u0430 \u0434\u043B\u044F \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438 \u043D\u0430 \u043E\u0441\u0442\u0430\u0432\u0448\u0443\u044E\u0441\u044F \u0447\u0430\u0441\u0442\u044C \u044D\u0442\u043E\u0439 \u0441\u0435\u0441\u0441\u0438\u0438 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0430. \u0412\u044B \u043C\u043E\u0436\u0435\u0442\u0435 \u043F\u0440\u043E\u0434\u043E\u043B\u0436\u0430\u0442\u044C \u043E\u0431\u0449\u0430\u0442\u044C\u0441\u044F \u0432 \u043E\u0431\u044B\u0447\u043D\u043E\u043C \u0440\u0435\u0436\u0438\u043C\u0435.",
+    loggingOptOutConfirm: "\u041E\u0442\u043A\u043B\u044E\u0447\u0438\u0442\u044C \u0434\u043B\u044F \u044D\u0442\u043E\u0439 \u0441\u0435\u0441\u0441\u0438\u0438",
+    loggingOptOutCancel: "\u041E\u0442\u043C\u0435\u043D\u0430",
+    loggingOptedOutNotice: "\u0421\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u0438\u0435 \u043E\u0442\u043A\u043B\u044E\u0447\u0435\u043D\u043E \u0434\u043B\u044F \u044D\u0442\u043E\u0439 \u0441\u0435\u0441\u0441\u0438\u0438."
   },
   zh: {
     title: "\u63D0\u51FA\u60A8\u7684\u95EE\u9898",
@@ -1181,7 +1315,14 @@ var CHAT_STRINGS = {
     nameLabel: "\u6211\u4EEC\u8BE5\u600E\u4E48\u79F0\u547C\u4F60\uFF1F",
     ageLabel: "\u4F60\u7684\u5E74\u9F84",
     genderLabel: "\u4F60\u7684\u6027\u522B",
-    intakeNotStored: "\u53EF\u9009\u3002\u7EDD\u4E0D\u4F1A\u88AB\u4FDD\u5B58\u3002"
+    intakeNotStored: "\u53EF\u9009\u3002\u7EDD\u4E0D\u4F1A\u88AB\u4FDD\u5B58\u3002",
+    loggingNotice: "\u6211\u4EEC\u53EF\u80FD\u4F1A\u4F7F\u7528\u6B64\u5BF9\u8BDD\u6765\u6539\u8FDB\u6211\u4EEC\u7684\u670D\u52A1\u3002",
+    loggingOptOutLink: "\u672C\u6B21\u4F1A\u8BDD\u9000\u51FA",
+    loggingOptOutModalTitle: "\u5173\u95ED\u5BF9\u8BDD\u8BB0\u5F55\uFF1F",
+    loggingOptOutModalBody: "\u8FD9\u5C06\u5728\u672C\u6B21\u6D4F\u89C8\u5668\u4F1A\u8BDD\u7684\u5269\u4F59\u65F6\u95F4\u5185\u505C\u6B62\u4FDD\u5B58\u6B64\u5BF9\u8BDD\u4EE5\u4F9B\u5BA1\u6838\u3002\u60A8\u4ECD\u7136\u53EF\u4EE5\u6B63\u5E38\u804A\u5929\u3002",
+    loggingOptOutConfirm: "\u672C\u6B21\u4F1A\u8BDD\u5173\u95ED",
+    loggingOptOutCancel: "\u53D6\u6D88",
+    loggingOptedOutNotice: "\u672C\u6B21\u4F1A\u8BDD\u8BB0\u5F55\u5DF2\u5173\u95ED\u3002"
   }
 };
 export {

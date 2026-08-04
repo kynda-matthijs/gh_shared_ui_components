@@ -18,6 +18,14 @@ import { STARTER_ICONS } from './starterIcons.js';
 // see that repo's chatlog_router.js) fire-and-forget — never awaited, never touched by
 // component state, `keepalive: true` so it survives a tab close right after sending.
 // A failure there is invisible to the person chatting, by design (see logChatTurn).
+// chatLoggingEnabled is resolved by the consuming app from its own CMS config — see
+// mini_site's AiChatBlock.astro, which reads it per ai-chat block/widget instance.
+//
+// Whenever chatLoggingEnabled is on, the disclaimer also grows a notice + an opt-out
+// link/modal (LoggingOptOutModal below). Confirming it sets a sessionStorage flag
+// (see persistLoggingOptOut/isLoggingOptedOut) that silences logChatTurn for the rest
+// of the browser tab — across every logging-enabled widget on the page, not just this
+// one instance, since that's what the opt-out copy tells the person.
 //
 // systemPrompt (optional): extra CMS-configurable instruction appended to the system
 // message (see buildSystemMessage) — the consuming app resolves this from its own
@@ -45,6 +53,13 @@ const DEFAULT_STRINGS = {
     ageLabel: 'Your age',
     genderLabel: 'Your gender',
     intakeNotStored: 'Optional. Never stored.',
+    loggingNotice: 'We may use this conversation to help improve our services.',
+    loggingOptOutLink: 'Opt out for this session',
+    loggingOptOutModalTitle: 'Turn off conversation logging?',
+    loggingOptOutModalBody: 'This stops us from saving this conversation for review, for the rest of this browser session. You can keep chatting as normal.',
+    loggingOptOutConfirm: 'Turn off for this session',
+    loggingOptOutCancel: 'Cancel',
+    loggingOptedOutNotice: 'Logging is turned off for this session.',
 };
 
 // ── Minimal markdown renderer ────────────────────────────────────────────
@@ -156,6 +171,19 @@ function logChatTurn(endpoint, sessionId, language, messages) {
             keepalive: true,
         }).catch(() => {});
     } catch { /* ignore — see comment above */ }
+}
+
+// Session-wide opt-out: one flag for the whole browser tab, not scoped per widget —
+// so opting out in one chat widget also silences any other logging-enabled widget
+// on the same page for the rest of this browser session, matching what the opt-out
+// modal actually tells the person. Deliberately NOT keyed by persistKey/aiSearchId.
+const LOGGING_OPT_OUT_KEY = 'sui-chat-logging-opted-out';
+function isLoggingOptedOut() {
+    try { return sessionStorage.getItem(LOGGING_OPT_OUT_KEY) === '1'; }
+    catch { return false; } // private browsing / quota exceeded — treat as not opted out
+}
+function persistLoggingOptOut() {
+    try { sessionStorage.setItem(LOGGING_OPT_OUT_KEY, '1'); } catch { /* ignore */ }
 }
 
 // moreInfoHrefPattern is a plain string like "/service/{id}/", not a function — props
@@ -328,6 +356,30 @@ function Message({ role, content, chunks, streaming, strings, moreInfoHrefPatter
     );
 }
 
+// Confirmation modal for the disclaimer's opt-out link (see the disclaimer block in
+// ChatInterface's render). Small and centered — this floats over a chat widget that
+// may itself be a small floating bubble, so a full-page side drawer (the pattern
+// admin_client uses elsewhere) would look broken here; deliberately its own minimal
+// dialog instead. titleId ties the heading to aria-labelledby for screen readers.
+function LoggingOptOutModal({ strings, titleId, onConfirm, onCancel }) {
+    return (
+        <div className="sui-chat-optout-overlay" onClick={e => { if (e.target === e.currentTarget) onCancel(); }}>
+            <div className="sui-chat-optout-modal" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+                <h3 id={titleId} className="sui-chat-optout-title">{strings.loggingOptOutModalTitle}</h3>
+                <p className="sui-chat-optout-body">{strings.loggingOptOutModalBody}</p>
+                <div className="sui-chat-optout-actions">
+                    <button type="button" className="sui-chat-optout-cancel" onClick={onCancel}>
+                        {strings.loggingOptOutCancel}
+                    </button>
+                    <button type="button" className="sui-chat-optout-confirm" onClick={onConfirm}>
+                        {strings.loggingOptOutConfirm}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 export default function ChatInterface({
     aiSearchId,
     languageName = 'English',
@@ -384,6 +436,20 @@ export default function ChatInterface({
     // during SSR module evaluation, only once this component actually mounts.
     const sessionIdRef = useRef(null);
     if (sessionIdRef.current == null) sessionIdRef.current = getOrCreateLogSessionId(persistKey);
+    // Read after mount, not in a useState initializer — sessionStorage doesn't exist
+    // during Astro's SSR pass (same reasoning as the persisted-messages effect below).
+    // Only bothers checking when logging is actually on for this widget.
+    const [loggingOptedOut, setLoggingOptedOutState] = useState(false);
+    const [optOutModalOpen, setOptOutModalOpen] = useState(false);
+    const optOutTitleId = useId();
+    useEffect(() => {
+        if (chatLoggingEnabled) setLoggingOptedOutState(isLoggingOptedOut());
+    }, [chatLoggingEnabled]);
+    const confirmLoggingOptOut = useCallback(() => {
+        persistLoggingOptOut();
+        setLoggingOptedOutState(true);
+        setOptOutModalOpen(false);
+    }, []);
 
     const scrollToBottom = useCallback(() => {
         requestAnimationFrame(() => {
@@ -480,7 +546,7 @@ export default function ChatInterface({
             const withAssistant = [...nextMessages, { role: 'assistant', content: assistantText, chunks }];
             setMessages(withAssistant);
             saveMessages(persistKey, withAssistant);
-            if (chatLoggingEnabled) {
+            if (chatLoggingEnabled && !loggingOptedOut) {
                 logChatTurn(chatLogEndpoint, sessionIdRef.current, languageName, withAssistant);
             }
         } catch (err) {
@@ -490,7 +556,7 @@ export default function ChatInterface({
             setPending(false);
             scrollToBottom();
         }
-    }, [pending, messages, aiSearchId, languageName, persistKey, strings.error, scrollToBottom, intake, chatLoggingEnabled, chatLogEndpoint, systemPrompt]);
+    }, [pending, messages, aiSearchId, languageName, persistKey, strings.error, scrollToBottom, intake, chatLoggingEnabled, chatLogEndpoint, systemPrompt, loggingOptedOut]);
 
     const handleFormSubmit = useCallback((e) => {
         e.preventDefault();
@@ -586,7 +652,28 @@ export default function ChatInterface({
                 </button>
             </form>
 
-            <p className="sui-chat-disclaimer">{strings.disclaimer}</p>
+            <p className="sui-chat-disclaimer">
+                {strings.disclaimer}
+                {chatLoggingEnabled && (loggingOptedOut ? (
+                    <span className="sui-chat-logging-note"> {strings.loggingOptedOutNotice}</span>
+                ) : (
+                    <span className="sui-chat-logging-note">
+                        {' '}{strings.loggingNotice}{' '}
+                        <button type="button" className="sui-chat-logging-optout-link" onClick={() => setOptOutModalOpen(true)}>
+                            {strings.loggingOptOutLink}
+                        </button>
+                    </span>
+                ))}
+            </p>
+
+            {optOutModalOpen && (
+                <LoggingOptOutModal
+                    strings={strings}
+                    titleId={optOutTitleId}
+                    onConfirm={confirmLoggingOptOut}
+                    onCancel={() => setOptOutModalOpen(false)}
+                />
+            )}
         </div>
     );
 
