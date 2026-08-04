@@ -1,5 +1,5 @@
 // src/ChatInterface.jsx
-import { useState, useRef, useCallback, useEffect, useId } from "react";
+import { useState, useRef, useCallback, useEffect, useId, forwardRef, useImperativeHandle } from "react";
 import { Bot, Send, Loader2, AlertCircle, X, Trash2, MessageCircle as MessageCircle2 } from "lucide-react";
 import DOMPurify from "dompurify";
 
@@ -348,7 +348,7 @@ function LoggingOptOutModal({ strings, titleId, onConfirm, onCancel }) {
     ] })
   ] }) });
 }
-function ChatInterface({
+var ChatInterface = forwardRef(function ChatInterface2({
   aiSearchId,
   languageName = "English",
   strings: stringsProp,
@@ -364,8 +364,10 @@ function ChatInterface({
   autoSendStarters = false,
   chatLoggingEnabled = false,
   chatLogEndpoint = null,
-  systemPrompt = ""
-}) {
+  systemPrompt = "",
+  retrievalOverrides = null,
+  onSearchChunks = null
+}, ref) {
   const strings = { ...DEFAULT_STRINGS, ...stringsProp };
   const isBubble = variant === "chat-bubble";
   const visibleStarters = (starters ?? []).filter((s) => s.active !== false);
@@ -441,7 +443,13 @@ function ChatInterface({
         ...nextMessages.map((m) => ({ role: m.role, content: m.content }))
       ],
       stream: true,
-      ai_search_options: { retrieval: { filters: PUBLIC_FILTER } }
+      // retrievalOverrides (max_num_results/match_threshold/etc, per Cloudflare's
+      // ai_search_options.retrieval schema) is a per-request debugging/tuning escape
+      // hatch — see admin_client's AiChatPreview.jsx tuning panel. Never used by the
+      // public mini_site widget; `filters` is always present regardless, since the
+      // public/-only retrieval scope (see module SECURITY note) must never be
+      // overridable by whatever the caller passes in.
+      ai_search_options: { retrieval: { ...retrievalOverrides, filters: PUBLIC_FILTER } }
     };
     let assistantText = "";
     let chunks = [];
@@ -490,6 +498,7 @@ function ChatInterface({
       if (chatLoggingEnabled && !loggingOptedOut) {
         logChatTurn(chatLogEndpoint, sessionIdRef.current, languageName, withAssistant);
       }
+      onSearchChunks == null ? void 0 : onSearchChunks(chunks);
     } catch (err) {
       setError(strings.error);
     } finally {
@@ -497,7 +506,7 @@ function ChatInterface({
       setPending(false);
       scrollToBottom();
     }
-  }, [pending, messages, aiSearchId, languageName, persistKey, strings.error, scrollToBottom, intake, chatLoggingEnabled, chatLogEndpoint, systemPrompt, loggingOptedOut]);
+  }, [pending, messages, aiSearchId, languageName, persistKey, strings.error, scrollToBottom, intake, chatLoggingEnabled, chatLogEndpoint, systemPrompt, loggingOptedOut, retrievalOverrides, onSearchChunks]);
   const handleFormSubmit = useCallback((e) => {
     e.preventDefault();
     const extra = pendingExtraPromptRef.current;
@@ -515,6 +524,12 @@ function ChatInterface({
       (_a = inputRef.current) == null ? void 0 : _a.focus();
     }
   }, [autoSendStarters, sendQuery]);
+  useImperativeHandle(ref, () => ({
+    resendLastQuery: () => {
+      const lastUser = [...messages].reverse().find((m) => m.role === "user");
+      if (lastUser) sendQuery(lastUser.content);
+    }
+  }), [messages, sendQuery]);
   if (!aiSearchId) return null;
   const panel = /* @__PURE__ */ jsxs2("div", { className: "sui-chat-panel", children: [
     /* @__PURE__ */ jsxs2("div", { className: "sui-chat-header", children: [
@@ -647,7 +662,8 @@ function ChatInterface({
       children: /* @__PURE__ */ jsx2(Bot, { className: "sui-chat-icon-lg" })
     }
   ) });
-}
+});
+var ChatInterface_default = ChatInterface;
 
 // src/DynamicContentGrid.jsx
 import { useState as useState2 } from "react";
@@ -1327,10 +1343,10 @@ var CHAT_STRINGS = {
 };
 
 // src/version.js
-var SHARED_UI_VERSION = "0.2.0";
+var SHARED_UI_VERSION = "0.3.0";
 export {
   CHAT_STRINGS,
-  ChatInterface,
+  ChatInterface_default as ChatInterface,
   DynamicContentGrid,
   SHARED_UI_VERSION,
   STARTER_ICONS

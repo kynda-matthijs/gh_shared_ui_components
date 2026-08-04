@@ -12,6 +12,26 @@ the one you're actively working on. Forgetting one leaves it silently rendering 
 stale build with no error — check its installed version against this file with
 `grep '"version"' node_modules/stappie-shared-ui/package.json`.
 
+## 0.3.0 — 2026-08-04
+
+Retrieval tuning/diagnostics escape hatch for `ChatInterface`, built for
+admin_client's AI Search tuning panel (mirrors Cloudflare's own AI Search
+playground):
+
+- `ChatInterface` is now wrapped in `forwardRef`. Passing a `ref` is optional and has
+  no effect on mini_site's usage — only a caller that explicitly attaches one gets
+  anything from it.
+- New `retrievalOverrides` prop — merged into `ai_search_options.retrieval` on every
+  request (e.g. `max_num_results`, `match_threshold`). `filters` is never overridable
+  this way; the hardcoded `public/`-only retrieval scope always wins (see the
+  module's SECURITY note).
+- New `onSearchChunks` prop — called with the raw retrieved chunks (score + metadata)
+  after each turn, for a caller that wants to inspect/display them beyond the curated
+  source cards this component already shows.
+- New `ref.resendLastQuery()` — re-sends the last user message as a new turn, so a
+  tuning panel can adjust `retrievalOverrides` and replay without the person retyping,
+  leaving both attempts visible in the transcript for comparison.
+
 ## 0.2.0 — 2026-08-04
 
 First versioned release. Retroactively covers everything shipped since the last

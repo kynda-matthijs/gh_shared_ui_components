@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, useId } from 'react';
+import { useState, useRef, useCallback, useEffect, useId, forwardRef, useImperativeHandle } from 'react';
 import { Bot, Send, Loader2, AlertCircle, X, Trash2, MessageCircle } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import ActionButtons, { sanitizeUrl } from './ActionButtons.jsx';
@@ -31,6 +31,22 @@ import { STARTER_ICONS } from './starterIcons.js';
 // message (see buildSystemMessage) — the consuming app resolves this from its own
 // config (e.g. a region-wide default overridable per block) before passing it in;
 // this component just appends whatever string it's given.
+//
+// Retrieval tuning/diagnostics escape hatch (retrievalOverrides, onSearchChunks, and
+// the resendLastQuery() ref method) exists for admin_client's AiChatPreview.jsx
+// tuning panel — mirrors Cloudflare's own AI Search playground (adjust max_num_results/
+// match_threshold on an existing conversation, inspect retrieved chunks + raw scores).
+// All three are no-ops when unused, so mini_site's public widget is unaffected:
+//   - retrievalOverrides: merged into ai_search_options.retrieval on every request
+//     (see Cloudflare's per-request retrieval schema: max_num_results, match_threshold,
+//     retrieval_type, keyword_match_mode, fusion_method, context_expansion, boost_by).
+//     `filters` is never overridable this way — see SECURITY note below.
+//   - onSearchChunks(chunks): called with the raw retrieved chunks (score + metadata)
+//     after each turn, for a caller that wants to render them (not just the curated
+//     source cards this component itself shows).
+//   - ref.resendLastQuery(): re-sends the last user message as a new turn — lets a
+//     tuning panel change retrievalOverrides then replay without retyping, with both
+//     attempts left visible in the transcript for comparison.
 //
 // SECURITY: the `folder: public/` retrieval filter below is NOT a prop and must never
 // become one. It's the only thing standing between this being a safe public/preview
@@ -380,7 +396,7 @@ function LoggingOptOutModal({ strings, titleId, onConfirm, onCancel }) {
     );
 }
 
-export default function ChatInterface({
+const ChatInterface = forwardRef(function ChatInterface({
     aiSearchId,
     languageName = 'English',
     strings: stringsProp,
@@ -397,7 +413,9 @@ export default function ChatInterface({
     chatLoggingEnabled = false,
     chatLogEndpoint = null,
     systemPrompt = '',
-}) {
+    retrievalOverrides = null,
+    onSearchChunks = null,
+}, ref) {
     const strings = { ...DEFAULT_STRINGS, ...stringsProp };
     const isBubble = variant === 'chat-bubble';
     // `active` defaults to on for any starter saved before this field existed. Computed
@@ -502,7 +520,13 @@ export default function ChatInterface({
                 ...nextMessages.map(m => ({ role: m.role, content: m.content })),
             ],
             stream: true,
-            ai_search_options: { retrieval: { filters: PUBLIC_FILTER } },
+            // retrievalOverrides (max_num_results/match_threshold/etc, per Cloudflare's
+            // ai_search_options.retrieval schema) is a per-request debugging/tuning escape
+            // hatch — see admin_client's AiChatPreview.jsx tuning panel. Never used by the
+            // public mini_site widget; `filters` is always present regardless, since the
+            // public/-only retrieval scope (see module SECURITY note) must never be
+            // overridable by whatever the caller passes in.
+            ai_search_options: { retrieval: { ...retrievalOverrides, filters: PUBLIC_FILTER } },
         };
 
         let assistantText = '';
@@ -549,6 +573,7 @@ export default function ChatInterface({
             if (chatLoggingEnabled && !loggingOptedOut) {
                 logChatTurn(chatLogEndpoint, sessionIdRef.current, languageName, withAssistant);
             }
+            onSearchChunks?.(chunks);
         } catch (err) {
             setError(strings.error);
         } finally {
@@ -556,7 +581,7 @@ export default function ChatInterface({
             setPending(false);
             scrollToBottom();
         }
-    }, [pending, messages, aiSearchId, languageName, persistKey, strings.error, scrollToBottom, intake, chatLoggingEnabled, chatLogEndpoint, systemPrompt, loggingOptedOut]);
+    }, [pending, messages, aiSearchId, languageName, persistKey, strings.error, scrollToBottom, intake, chatLoggingEnabled, chatLogEndpoint, systemPrompt, loggingOptedOut, retrievalOverrides, onSearchChunks]);
 
     const handleFormSubmit = useCallback((e) => {
         e.preventDefault();
@@ -575,6 +600,19 @@ export default function ChatInterface({
             inputRef.current?.focus();
         }
     }, [autoSendStarters, sendQuery]);
+
+    // Imperative escape hatch for a tuning/debugging tool (see admin_client's
+    // AiChatPreview.jsx) that wants to re-ask the last question after adjusting
+    // retrievalOverrides, without the person retyping it — resendLastQuery() sends it
+    // as a genuinely new turn (not a replace-in-place), so both attempts stay visible
+    // in the transcript for side-by-side comparison. Unused by mini_site — a ref this
+    // component doesn't receive is simply never populated, no behavior change.
+    useImperativeHandle(ref, () => ({
+        resendLastQuery: () => {
+            const lastUser = [...messages].reverse().find(m => m.role === 'user');
+            if (lastUser) sendQuery(lastUser.content);
+        },
+    }), [messages, sendQuery]);
 
     if (!aiSearchId) return null;
 
@@ -701,4 +739,6 @@ export default function ChatInterface({
             )}
         </section>
     );
-}
+});
+
+export default ChatInterface;
