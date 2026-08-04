@@ -1325,10 +1325,14 @@ var CHAT_STRINGS = {
     loggingOptedOutNotice: "\u672C\u6B21\u4F1A\u8BDD\u8BB0\u5F55\u5DF2\u5173\u95ED\u3002"
   }
 };
+
+// src/version.js
+var SHARED_UI_VERSION = "0.2.0";
 export {
   CHAT_STRINGS,
   ChatInterface,
   DynamicContentGrid,
+  SHARED_UI_VERSION,
   STARTER_ICONS
 };
 //# sourceMappingURL=index.js.map

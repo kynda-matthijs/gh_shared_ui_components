@@ -57,3 +57,27 @@ Consumers install this via a git dependency pinned to a commit/tag (see each app
 `package.json`) — bump that pin after building + pushing a change here, then
 `npm install` in the consuming app(s) to pick it up. There is no floating "always use
 latest" branch dependency; updates are always an explicit, reviewable version bump.
+
+**There are two consumers, and both need the pin bump — it's easy to update only the
+one you're actively working on and forget the other, which leaves it silently
+rendering a stale build with no error:**
+- `mini_site/package.json`
+- `admin_client (EKZ/new_admin)/package.json`
+
+## Versioning
+
+Bump `package.json`'s `"version"` and `src/version.js`'s `SHARED_UI_VERSION` together
+on every change that ships user-visible behavior, and add a `CHANGELOG.md` entry
+describing it — see that file for the format. This is a **diagnostic label, not a
+resolved dependency version** (consumers pin by git SHA, per above), but it's what
+lets you answer "am I actually running the build with feature X?" without digging
+through `node_modules`:
+
+- Both admin block-editor settings drawers that render a `stappie-shared-ui`
+  component (`AiChatBlockEditor.jsx`, `DynamicBlockEditor.jsx` in `admin_client`) show
+  a small `SHARED_UI_VERSION` badge in their header for exactly this reason.
+- Or check directly: `grep '"version"' node_modules/stappie-shared-ui/package.json` in
+  either consumer.
+
+If the badge/grep shows an older version than you expect, the consuming app's pin
+wasn't bumped (or `npm install` wasn't re-run) — that's the bug, not this package.
