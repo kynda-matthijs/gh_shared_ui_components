@@ -337,8 +337,11 @@ function StarterButtons({ starters, onPick, onPreview }) {
     );
   }) });
 }
+function isClarifyingQuestion(content) {
+  return content.trim().endsWith("?");
+}
 function Message({ role, content, chunks, streaming, strings, moreInfoHrefPattern }) {
-  const sources = role === "assistant" ? dedupeSources(chunks) : [];
+  const sources = role === "assistant" && !isClarifyingQuestion(content) ? dedupeSources(chunks) : [];
   return /* @__PURE__ */ jsxs2("div", { className: `sui-chat-msg sui-chat-msg--${role}`, children: [
     /* @__PURE__ */ jsx2("span", { className: "sui-chat-msg-label", children: role === "user" ? strings.you : strings.assistant }),
     /* @__PURE__ */ jsxs2("div", { className: "sui-chat-msg-bubble", "aria-live": role === "assistant" ? "polite" : void 0, children: [
@@ -1418,7 +1421,7 @@ var CHAT_STRINGS = {
 };
 
 // src/version.js
-var SHARED_UI_VERSION = "0.6.0";
+var SHARED_UI_VERSION = "0.6.1";
 export {
   CHAT_STRINGS,
   ChatInterface_default as ChatInterface,

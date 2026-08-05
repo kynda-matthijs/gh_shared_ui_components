@@ -12,6 +12,20 @@ the one you're actively working on. Forgetting one leaves it silently rendering 
 stale build with no error — check its installed version against this file with
 `grep '"version"' node_modules/stappie-shared-ui/package.json`.
 
+## 0.6.1 — 2026-08-05
+
+Suppresses source cards while the assistant is still asking a clarifying question:
+
+- New `isClarifyingQuestion()` heuristic in `Message` — a turn whose text ends in "?"
+  is treated as narrowing-down rather than a final recommendation, so `SourceCard`s
+  don't appear until the bot actually gives its answer. Pairs with the CMS-
+  configurable instruction (registry.js's `DEFAULT_INSTRUCTIONS`) to ask ONE
+  eliminating question instead of listing every retrieved candidate up front — without
+  this, all the candidates' contact cards showed up regardless of whether the bot's
+  text had narrowed anything down yet.
+- No prop/behavior changes for existing consumers — purely internal to `Message`'s
+  own rendering.
+
 ## 0.6.0 — 2026-08-05
 
 Captures the chat-proxy's internal diagnostics for logging, so the CMS side can see

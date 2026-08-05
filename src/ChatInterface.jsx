@@ -397,8 +397,21 @@ function ArrowToInput() {
     );
 }
 
+// Suppress source cards while the assistant is still narrowing down which option
+// fits (see registry.js's DEFAULT_INSTRUCTIONS — the CMS-configurable instruction to
+// ask ONE eliminating question instead of listing every candidate up front) —
+// showing every retrieved option as a card while the bot is mid-triage defeats the
+// point of asking first. Heuristic: a turn ending in "?" is treated as a clarifying
+// question rather than a final recommendation, since the instructed flow always puts
+// that question last. Imperfect — a genuine wrap-up offer like "zal ik er een voor je
+// bellen?" also suppresses cards for that turn — but matches the common case without
+// needing the model to emit a separate machine-readable signal.
+function isClarifyingQuestion(content) {
+    return content.trim().endsWith('?');
+}
+
 function Message({ role, content, chunks, streaming, strings, moreInfoHrefPattern }) {
-    const sources = role === 'assistant' ? dedupeSources(chunks) : [];
+    const sources = (role === 'assistant' && !isClarifyingQuestion(content)) ? dedupeSources(chunks) : [];
     return (
         <div className={`sui-chat-msg sui-chat-msg--${role}`}>
             <span className="sui-chat-msg-label">{role === 'user' ? strings.you : strings.assistant}</span>
