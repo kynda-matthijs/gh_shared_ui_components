@@ -12,6 +12,23 @@ the one you're actively working on. Forgetting one leaves it silently rendering 
 stale build with no error — check its installed version against this file with
 `grep '"version"' node_modules/stappie-shared-ui/package.json`.
 
+## 0.6.0 — 2026-08-05
+
+Captures the chat-proxy's internal diagnostics for logging, so the CMS side can see
+not just the transcript but how each answer was actually produced:
+
+- `meta` SSE events (previously parsed and discarded) are now merged into a per-turn
+  diagnostics object — model actually used, retrieval-confidence bucket, scores, and
+  the addendum text the proxy appended, if any. Stored on the assistant message as
+  `diag`; stays `undefined` on the direct-to-Cloudflare path, which never sends `meta`.
+- `logChatTurn` now also sends `systemPrompt` (the composed base prompt for the most
+  recent turn), `settings` (the block's `chatProxySettings` as currently configured),
+  and `diagnostics` (one entry per assistant turn, including doc IDs derived from the
+  same `chunks` the source cards already render) — all optional, all resent in full
+  each turn like `messages` already is. No change for consumers that don't read the
+  new fields; the log endpoint (api_server's chatlog_router.js) treats them as
+  additive.
+
 ## 0.5.0 — 2026-08-04
 
 Graduates the adaptive chat proxy (previously a standalone admin_client experiment)

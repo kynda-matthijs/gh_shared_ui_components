@@ -20,6 +20,9 @@ import { STARTER_ICONS } from './starterIcons.js';
 // A failure there is invisible to the person chatting, by design (see logChatTurn).
 // chatLoggingEnabled is resolved by the consuming app from its own CMS config — see
 // mini_site's AiChatBlock.astro, which reads it per ai-chat block/widget instance.
+// When chatProxyEndpoint is also in play, the log payload additionally carries the
+// composed system prompt, the block's proxy settings, and per-turn diagnostics (model
+// used, retrieval-confidence bucket, scores, matched doc IDs) — see logChatTurn.
 //
 // Whenever chatLoggingEnabled is on, the disclaimer also grows a notice + an opt-out
 // link/modal (LoggingOptOutModal below). Confirming it sets a sessionStorage flag
@@ -205,9 +208,23 @@ function getOrCreateLogSessionId(key) {
 // Fire-and-forget: never awaited by the caller, never feeds into component state
 // (setError/setPending/etc). A logging failure must stay completely invisible to
 // the person using the chat widget.
-function logChatTurn(endpoint, sessionId, language, messages) {
+//
+// systemPrompt/settings/diagnostics (optional, only meaningful when chatProxyEndpoint
+// is in play): the internal-workings side of a conversation, for the CMS side's own
+// fine-tuning review — never shown to the person chatting. systemPrompt is the base
+// composed prompt for the most recent turn (persona/instructions/guardrails, see
+// buildSystemMessage); settings is chatProxySettings as configured on this block
+// (models per bucket, thresholds, bucket addenda text) — a snapshot, resent in full
+// each turn like messages/transcript already are; diagnostics is one entry per
+// assistant turn (see the `diag` objects built in sendQuery) — model actually used,
+// retrieval-confidence bucket, scores, and the doc IDs that made it into the prompt
+// (for cross-referencing against the knowledge base later).
+function logChatTurn(endpoint, sessionId, language, messages, systemPrompt, settings) {
     if (!endpoint) return;
     try {
+        const diagnostics = messages
+            .map((m, turnIndex) => (m.role === 'assistant' && m.diag) ? { turnIndex, ...m.diag } : null)
+            .filter(Boolean);
         fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -215,6 +232,9 @@ function logChatTurn(endpoint, sessionId, language, messages) {
                 sessionId,
                 language,
                 messages: messages.map(m => ({ role: m.role, content: m.content })),
+                systemPrompt,
+                settings,
+                diagnostics,
             }),
             keepalive: true,
         }).catch(() => {});
@@ -593,6 +613,11 @@ const ChatInterface = forwardRef(function ChatInterface({
 
         let assistantText = '';
         let chunks = [];
+        // Merged across every `meta` event this turn (route.js sends retrieval scores
+        // and the chosen model as two separate events) — see logChatTurn for what
+        // becomes of this. Stays empty for the direct-to-Cloudflare path, which never
+        // sends `meta`.
+        let metaAccum = {};
         try {
             const res = await fetch(apiUrl, {
                 method: 'POST',
@@ -620,13 +645,16 @@ const ChatInterface = forwardRef(function ChatInterface({
                     // status/meta: only ever sent by chatProxyEndpoint (see route.js) — a
                     // human-readable progress label ("searching"/"found:3"/"generating")
                     // shown instead of strings.thinking. meta carries structured diagnostics
-                    // (bucket/model/scores) that this component doesn't otherwise use, so
-                    // it's parsed but intentionally discarded here.
+                    // (bucket/model/scores/addendum) — merged into metaAccum for logChatTurn,
+                    // not otherwise used in rendering.
                     if (parsed.eventName === 'status') {
                         setStatusText(parsed.data);
                         continue;
                     }
-                    if (parsed.eventName === 'meta') continue;
+                    if (parsed.eventName === 'meta') {
+                        try { Object.assign(metaAccum, JSON.parse(parsed.data)); } catch { /* ignore */ }
+                        continue;
+                    }
                     try {
                         const frame = JSON.parse(parsed.data);
                         const delta = frame.choices?.[0]?.delta?.content;
@@ -639,11 +667,18 @@ const ChatInterface = forwardRef(function ChatInterface({
                 }
             }
             if (!assistantText) throw new Error('empty response');
-            const withAssistant = [...nextMessages, { role: 'assistant', content: assistantText, chunks }];
+            // Doc IDs for cross-referencing against the knowledge base later — derived
+            // from the same `chunks` the source cards already render, not a separate
+            // fetch. Only present when the proxy path ran (metaAccum non-empty); the
+            // direct path still has chunks but no model/bucket/score data to pair with.
+            const diag = Object.keys(metaAccum).length
+                ? { ...metaAccum, docIds: chunks.map(c => c.item?.metadata?.entity_id).filter(Boolean) }
+                : undefined;
+            const withAssistant = [...nextMessages, { role: 'assistant', content: assistantText, chunks, diag }];
             setMessages(withAssistant);
             saveMessages(persistKey, withAssistant);
             if (chatLoggingEnabled && !loggingOptedOut) {
-                logChatTurn(chatLogEndpoint, sessionIdRef.current, languageName, withAssistant);
+                logChatTurn(chatLogEndpoint, sessionIdRef.current, languageName, withAssistant, fullSystemPrompt, chatProxySettings);
             }
             onSearchChunks?.(chunks);
         } catch (err) {

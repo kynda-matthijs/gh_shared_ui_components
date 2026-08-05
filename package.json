@@ -1,6 +1,6 @@
 {
   "name": "stappie-shared-ui",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "description": "Shared React components between the Gemeentehuisje/Stappie admin (admin_client) and the public mini-site (mini_site). Presentational, props-driven — no app-specific data fetching, auth, or global state.",

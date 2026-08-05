@@ -202,16 +202,20 @@ function getOrCreateLogSessionId(key) {
     return randomId();
   }
 }
-function logChatTurn(endpoint, sessionId, language, messages) {
+function logChatTurn(endpoint, sessionId, language, messages, systemPrompt, settings) {
   if (!endpoint) return;
   try {
+    const diagnostics = messages.map((m, turnIndex) => m.role === "assistant" && m.diag ? { turnIndex, ...m.diag } : null).filter(Boolean);
     fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         sessionId,
         language,
-        messages: messages.map((m) => ({ role: m.role, content: m.content }))
+        messages: messages.map((m) => ({ role: m.role, content: m.content })),
+        systemPrompt,
+        settings,
+        diagnostics
       }),
       keepalive: true
     }).catch(() => {
@@ -474,6 +478,7 @@ var ChatInterface = forwardRef(function ChatInterface2({
     };
     let assistantText = "";
     let chunks = [];
+    let metaAccum = {};
     try {
       const res = await fetch(apiUrl, {
         method: "POST",
@@ -504,7 +509,13 @@ var ChatInterface = forwardRef(function ChatInterface2({
             setStatusText(parsed.data);
             continue;
           }
-          if (parsed.eventName === "meta") continue;
+          if (parsed.eventName === "meta") {
+            try {
+              Object.assign(metaAccum, JSON.parse(parsed.data));
+            } catch {
+            }
+            continue;
+          }
           try {
             const frame = JSON.parse(parsed.data);
             const delta = (_c = (_b = (_a = frame.choices) == null ? void 0 : _a[0]) == null ? void 0 : _b.delta) == null ? void 0 : _c.content;
@@ -518,11 +529,15 @@ var ChatInterface = forwardRef(function ChatInterface2({
         }
       }
       if (!assistantText) throw new Error("empty response");
-      const withAssistant = [...nextMessages, { role: "assistant", content: assistantText, chunks }];
+      const diag = Object.keys(metaAccum).length ? { ...metaAccum, docIds: chunks.map((c) => {
+        var _a2, _b2;
+        return (_b2 = (_a2 = c.item) == null ? void 0 : _a2.metadata) == null ? void 0 : _b2.entity_id;
+      }).filter(Boolean) } : void 0;
+      const withAssistant = [...nextMessages, { role: "assistant", content: assistantText, chunks, diag }];
       setMessages(withAssistant);
       saveMessages(persistKey, withAssistant);
       if (chatLoggingEnabled && !loggingOptedOut) {
-        logChatTurn(chatLogEndpoint, sessionIdRef.current, languageName, withAssistant);
+        logChatTurn(chatLogEndpoint, sessionIdRef.current, languageName, withAssistant, fullSystemPrompt, chatProxySettings);
       }
       onSearchChunks == null ? void 0 : onSearchChunks(chunks);
     } catch (err) {
@@ -1403,7 +1418,7 @@ var CHAT_STRINGS = {
 };
 
 // src/version.js
-var SHARED_UI_VERSION = "0.5.0";
+var SHARED_UI_VERSION = "0.6.0";
 export {
   CHAT_STRINGS,
   ChatInterface_default as ChatInterface,
