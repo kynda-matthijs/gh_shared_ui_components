@@ -83,921 +83,6 @@ var STARTER_ICONS = {
   Heart
 };
 
-// src/ChatInterface.jsx
-import { Fragment, jsx as jsx2, jsxs as jsxs2 } from "react/jsx-runtime";
-var PUBLIC_FILTER = { folder: { $gte: "public/", $lt: "public0" } };
-var DEFAULT_STRINGS = {
-  title: "Ask your question",
-  inputLabel: "Type your question",
-  send: "Send",
-  startHint: "Choose a topic or ask a question below",
-  thinking: "Thinking\u2026",
-  error: "Something went wrong. Please try again.",
-  retry: "Try again",
-  relatedHelp: "Related help",
-  call: "Call",
-  email: "Email",
-  website: "Website",
-  route: "Directions",
-  moreInfo: "More info",
-  openChat: "Open chat",
-  closeChat: "Close chat",
-  clearChat: "Clear chat",
-  clearInput: "Clear",
-  you: "You",
-  assistant: "Assistant",
-  disclaimer: "This is an AI assistant. Always double-check important details with the organisation itself.",
-  aboutYouTitle: "About you (optional)",
-  nameLabel: "What should we call you?",
-  ageLabel: "Your age",
-  genderLabel: "Your gender",
-  intakeNotStored: "Optional. Never stored.",
-  loggingNotice: "We may use this conversation to help improve our services.",
-  loggingOptOutLink: "Opt out for this session",
-  loggingOptOutModalTitle: "Turn off conversation logging?",
-  loggingOptOutModalBody: "This stops us from saving this conversation for review, for the rest of this browser session. You can keep chatting as normal.",
-  loggingOptOutConfirm: "Turn off for this session",
-  loggingOptOutCancel: "Cancel",
-  loggingOptedOutNotice: "Logging is turned off for this session.",
-  statusSearching: "Searching\u2026",
-  statusFound: "{n} results found\u2026",
-  statusGenerating: "Preparing an answer\u2026"
-};
-function escapeHtml(s) {
-  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-}
-function renderMarkdown(text) {
-  let html = escapeHtml(text);
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) => {
-    const safe = sanitizeUrl(url);
-    return safe ? `<a href="${safe}" target="_blank" rel="noopener noreferrer">${label}</a>` : label;
-  });
-  html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-  html = html.replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>");
-  html = html.split(/\n{2,}/).map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`).join("");
-  return DOMPurify.sanitize(html);
-}
-function parseSSEBlock(block) {
-  let eventName = "message";
-  const dataLines = [];
-  for (const line of block.split("\n")) {
-    if (line.startsWith("event:")) eventName = line.slice(6).trim();
-    else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
-  }
-  return dataLines.length ? { eventName, data: dataLines.join("\n") } : null;
-}
-function formatStatus(status, strings) {
-  if (!status) return "";
-  if (status === "searching") return strings.statusSearching ?? strings.thinking;
-  if (status === "generating") return strings.statusGenerating ?? strings.thinking;
-  const found = status.match(/^found:(\d+)$/);
-  if (found) return (strings.statusFound ?? strings.thinking).replace("{n}", found[1]);
-  return strings.thinking;
-}
-function dedupeSources(chunks) {
-  var _a;
-  const byId = /* @__PURE__ */ new Map();
-  for (const c of chunks ?? []) {
-    const meta = (_a = c.item) == null ? void 0 : _a.metadata;
-    if (!(meta == null ? void 0 : meta.entity_id)) continue;
-    const existing = byId.get(meta.entity_id);
-    if (!existing || (c.score ?? 0) > existing.score) {
-      byId.set(meta.entity_id, { meta, score: c.score ?? 0 });
-    }
-  }
-  return [...byId.values()].sort((a, b) => b.score - a.score).slice(0, 4);
-}
-var MAX_STORED_MESSAGES = 40;
-function loadMessages(key) {
-  if (!key) return [];
-  try {
-    const raw = sessionStorage.getItem(key);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-function saveMessages(key, messages) {
-  if (!key) return;
-  try {
-    sessionStorage.setItem(key, JSON.stringify(messages.slice(-MAX_STORED_MESSAGES)));
-  } catch {
-  }
-}
-function randomId() {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-function getOrCreateLogSessionId(key) {
-  if (!key) return randomId();
-  const storageKey = `${key}:logId`;
-  try {
-    const existing = sessionStorage.getItem(storageKey);
-    if (existing) return existing;
-    const created = randomId();
-    sessionStorage.setItem(storageKey, created);
-    return created;
-  } catch {
-    return randomId();
-  }
-}
-function logChatTurn(endpoint, sessionId, language, messages, systemPrompt, settings) {
-  if (!endpoint) return;
-  try {
-    const diagnostics = messages.map((m, turnIndex) => m.role === "assistant" && m.diag ? { turnIndex, ...m.diag } : null).filter(Boolean);
-    fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sessionId,
-        language,
-        messages: messages.map((m) => ({ role: m.role, content: m.content })),
-        systemPrompt,
-        settings,
-        diagnostics
-      }),
-      keepalive: true
-    }).catch(() => {
-    });
-  } catch {
-  }
-}
-var LOGGING_OPT_OUT_KEY = "sui-chat-logging-opted-out";
-function isLoggingOptedOut() {
-  try {
-    return sessionStorage.getItem(LOGGING_OPT_OUT_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-function persistLoggingOptOut() {
-  try {
-    sessionStorage.setItem(LOGGING_OPT_OUT_KEY, "1");
-  } catch {
-  }
-}
-function buildMoreInfoHref(pattern, entityId) {
-  if (!pattern) return null;
-  return pattern.replace("{id}", encodeURIComponent(entityId));
-}
-function SourceCard({ meta, strings, moreInfoHrefPattern }) {
-  let ctx = {};
-  try {
-    ctx = JSON.parse(meta.context || "{}");
-  } catch {
-  }
-  const infoHref = buildMoreInfoHref(moreInfoHrefPattern, meta.entity_id);
-  return /* @__PURE__ */ jsxs2("div", { className: "sui-chat-source-card", children: [
-    /* @__PURE__ */ jsx2("div", { className: "sui-chat-source-title", children: meta.name || ctx.naam || "" }),
-    ctx.adres && /* @__PURE__ */ jsx2("div", { className: "sui-chat-source-address", children: ctx.adres }),
-    /* @__PURE__ */ jsx2(ActionButtons, { tel: ctx.tel, email: ctx.email, url: ctx.url, address: ctx.adres, moreInfoHref: infoHref, strings })
-  ] });
-}
-function buildIntakeContext(intake) {
-  var _a, _b, _c;
-  const parts = [];
-  if ((_a = intake.name) == null ? void 0 : _a.trim()) parts.push(`Their name is ${intake.name.trim()} \u2014 you may use it to sound warm and personal.`);
-  if ((_b = intake.age) == null ? void 0 : _b.trim()) parts.push(`Their age is ${intake.age.trim()}.`);
-  if ((_c = intake.gender) == null ? void 0 : _c.trim()) parts.push(`Their gender: ${intake.gender.trim()}.`);
-  if (!parts.length) return "";
-  return ` ${parts.join(" ")} Never ask them to confirm or repeat this information back.`;
-}
-function buildSystemMessage(languageName, intake, systemPrompt, extraPrompt) {
-  return `Respond in the same language the person is writing in. If you can't confidently tell what language that is, respond in ${languageName} instead. Keep answers concise and easy to read for someone who may be in a stressful situation.${buildIntakeContext(intake)}${(systemPrompt == null ? void 0 : systemPrompt.trim()) ? ` ${systemPrompt.trim()}` : ""}${extraPrompt ? ` ${extraPrompt}` : ""}`;
-}
-function IntakeForm({ intake, onChange, askName, askAge, askGender, strings, open, onToggle }) {
-  if (!askName && !askAge && !askGender) return null;
-  return /* @__PURE__ */ jsxs2("div", { className: "sui-chat-intake", children: [
-    /* @__PURE__ */ jsx2("button", { type: "button", className: "sui-chat-intake-toggle", onClick: onToggle, "aria-expanded": open, children: strings.aboutYouTitle }),
-    open && /* @__PURE__ */ jsxs2("div", { className: "sui-chat-intake-fields", children: [
-      askName && /* @__PURE__ */ jsxs2("label", { className: "sui-chat-intake-field", children: [
-        /* @__PURE__ */ jsx2("span", { children: strings.nameLabel }),
-        /* @__PURE__ */ jsx2(
-          "input",
-          {
-            type: "text",
-            value: intake.name,
-            autoComplete: "off",
-            onChange: (e) => onChange({ ...intake, name: e.target.value })
-          }
-        )
-      ] }),
-      askAge && /* @__PURE__ */ jsxs2("label", { className: "sui-chat-intake-field", children: [
-        /* @__PURE__ */ jsx2("span", { children: strings.ageLabel }),
-        /* @__PURE__ */ jsx2(
-          "input",
-          {
-            type: "number",
-            inputMode: "numeric",
-            min: "0",
-            max: "120",
-            value: intake.age,
-            autoComplete: "off",
-            onChange: (e) => onChange({ ...intake, age: e.target.value })
-          }
-        )
-      ] }),
-      askGender && /* @__PURE__ */ jsxs2("label", { className: "sui-chat-intake-field", children: [
-        /* @__PURE__ */ jsx2("span", { children: strings.genderLabel }),
-        /* @__PURE__ */ jsx2(
-          "input",
-          {
-            type: "text",
-            value: intake.gender,
-            autoComplete: "off",
-            onChange: (e) => onChange({ ...intake, gender: e.target.value })
-          }
-        )
-      ] }),
-      /* @__PURE__ */ jsx2("p", { className: "sui-chat-intake-note", children: strings.intakeNotStored })
-    ] })
-  ] });
-}
-function StarterButtons({ starters, onPick, onPreview }) {
-  if (!starters.length) return null;
-  return /* @__PURE__ */ jsx2("div", { className: "sui-chat-starters", children: starters.map((s) => {
-    const Icon = STARTER_ICONS[s.icon] ?? MessageCircle2;
-    return /* @__PURE__ */ jsxs2(
-      "button",
-      {
-        type: "button",
-        className: "sui-chat-starter-btn",
-        onClick: () => onPick(s),
-        onMouseEnter: () => onPreview(s.question),
-        onMouseLeave: () => onPreview(""),
-        onFocus: () => onPreview(s.question),
-        onBlur: () => onPreview(""),
-        children: [
-          /* @__PURE__ */ jsx2(Icon, { className: "sui-chat-icon" }),
-          /* @__PURE__ */ jsx2("span", { children: s.label })
-        ]
-      },
-      s.id
-    );
-  }) });
-}
-function isClarifyingQuestion(content) {
-  return content.trim().endsWith("?");
-}
-function Message({ role, content, chunks, streaming, strings, moreInfoHrefPattern }) {
-  const sources = role === "assistant" && !isClarifyingQuestion(content) ? dedupeSources(chunks) : [];
-  return /* @__PURE__ */ jsxs2("div", { className: `sui-chat-msg sui-chat-msg--${role}`, children: [
-    /* @__PURE__ */ jsx2("span", { className: "sui-chat-msg-label", children: role === "user" ? strings.you : strings.assistant }),
-    /* @__PURE__ */ jsxs2("div", { className: "sui-chat-msg-bubble", "aria-live": role === "assistant" ? "polite" : void 0, children: [
-      role === "user" ? /* @__PURE__ */ jsx2("div", { className: "sui-chat-msg-text", children: content }) : /* @__PURE__ */ jsx2("div", { className: "sui-chat-msg-text", dangerouslySetInnerHTML: { __html: renderMarkdown(content) } }),
-      streaming && /* @__PURE__ */ jsx2("span", { className: "sui-chat-cursor", "aria-hidden": "true" }),
-      sources.length > 0 && /* @__PURE__ */ jsxs2("div", { className: "sui-chat-sources", children: [
-        /* @__PURE__ */ jsx2("h4", { className: "sui-chat-sources-heading", children: strings.relatedHelp }),
-        /* @__PURE__ */ jsx2("div", { className: "sui-chat-sources-grid", children: sources.map((s) => /* @__PURE__ */ jsx2(SourceCard, { meta: s.meta, strings, moreInfoHrefPattern }, s.meta.entity_id)) })
-      ] })
-    ] })
-  ] });
-}
-function LoggingOptOutModal({ strings, titleId, onConfirm, onCancel }) {
-  return /* @__PURE__ */ jsx2("div", { className: "sui-chat-optout-overlay", onClick: (e) => {
-    if (e.target === e.currentTarget) onCancel();
-  }, children: /* @__PURE__ */ jsxs2("div", { className: "sui-chat-optout-modal", role: "dialog", "aria-modal": "true", "aria-labelledby": titleId, children: [
-    /* @__PURE__ */ jsx2("h3", { id: titleId, className: "sui-chat-optout-title", children: strings.loggingOptOutModalTitle }),
-    /* @__PURE__ */ jsx2("p", { className: "sui-chat-optout-body", children: strings.loggingOptOutModalBody }),
-    /* @__PURE__ */ jsxs2("div", { className: "sui-chat-optout-actions", children: [
-      /* @__PURE__ */ jsx2("button", { type: "button", className: "sui-chat-optout-cancel", onClick: onCancel, children: strings.loggingOptOutCancel }),
-      /* @__PURE__ */ jsx2("button", { type: "button", className: "sui-chat-optout-confirm", onClick: onConfirm, children: strings.loggingOptOutConfirm })
-    ] })
-  ] }) });
-}
-var ChatInterface = forwardRef(function ChatInterface2({
-  aiSearchId,
-  languageName = "English",
-  strings: stringsProp,
-  variant = "chat-page",
-  dir = "ltr",
-  placeholder,
-  moreInfoHrefPattern = null,
-  persistKey = null,
-  askName = false,
-  askAge = false,
-  askGender = false,
-  starters = [],
-  autoSendStarters = false,
-  chatLoggingEnabled = false,
-  chatLogEndpoint = null,
-  systemPrompt = "",
-  retrievalOverrides = null,
-  onSearchChunks = null,
-  botName = "",
-  chatProxyEndpoint = null,
-  chatProxySettings = null
-}, ref) {
-  const strings = { ...DEFAULT_STRINGS, ...stringsProp, ...(botName == null ? void 0 : botName.trim()) ? { assistant: botName.trim() } : {} };
-  const isBubble = variant === "chat-bubble";
-  const visibleStarters = (starters ?? []).filter((s) => s.active !== false);
-  const [open, setOpen] = useState(!isBubble);
-  const [intake, setIntake] = useState({ name: "", age: "", gender: "" });
-  const [intakeOpen, setIntakeOpen] = useState(true);
-  const pendingExtraPromptRef = useRef("");
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState("");
-  const [previewQuestion, setPreviewQuestion] = useState("");
-  const [streaming, setStreaming] = useState("");
-  const [pending, setPending] = useState(false);
-  const [statusText, setStatusText] = useState("");
-  const [error, setError] = useState("");
-  const logRef = useRef(null);
-  const inputRef = useRef(null);
-  const toggleRef = useRef(null);
-  const inputId = useId();
-  const sessionIdRef = useRef(null);
-  if (sessionIdRef.current == null) sessionIdRef.current = getOrCreateLogSessionId(persistKey);
-  const [loggingOptedOut, setLoggingOptedOutState] = useState(false);
-  const [optOutModalOpen, setOptOutModalOpen] = useState(false);
-  const optOutTitleId = useId();
-  useEffect(() => {
-    if (chatLoggingEnabled) setLoggingOptedOutState(isLoggingOptedOut());
-  }, [chatLoggingEnabled]);
-  const confirmLoggingOptOut = useCallback(() => {
-    persistLoggingOptOut();
-    setLoggingOptedOutState(true);
-    setOptOutModalOpen(false);
-  }, []);
-  const scrollToBottom = useCallback(() => {
-    requestAnimationFrame(() => {
-      if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
-    });
-  }, []);
-  useEffect(() => {
-    if (open && inputRef.current) inputRef.current.focus();
-  }, [open]);
-  useEffect(() => {
-    const stored = loadMessages(persistKey);
-    if (stored.length) setMessages(stored);
-  }, []);
-  const clearChat = useCallback(() => {
-    var _a;
-    setMessages([]);
-    setError("");
-    saveMessages(persistKey, []);
-    if (persistKey) {
-      try {
-        sessionStorage.removeItem(persistKey);
-      } catch {
-      }
-    }
-    (_a = inputRef.current) == null ? void 0 : _a.focus();
-  }, [persistKey]);
-  const sendQuery = useCallback(async (query, extraPrompt = "") => {
-    var _a, _b, _c;
-    query = query.trim();
-    if (!query || pending) return;
-    setError("");
-    const nextMessages = [...messages, { role: "user", content: query }];
-    setMessages(nextMessages);
-    saveMessages(persistKey, nextMessages);
-    setInput("");
-    setIntakeOpen(false);
-    setPending(true);
-    setStreaming(" ");
-    scrollToBottom();
-    const fullSystemPrompt = buildSystemMessage(languageName, intake, systemPrompt, extraPrompt);
-    const usingProxy = !!chatProxyEndpoint;
-    const apiUrl = usingProxy ? chatProxyEndpoint : `https://${aiSearchId}.search.ai.cloudflare.com/chat/completions`;
-    const body = usingProxy ? {
-      aiSearchId,
-      messages: nextMessages.map((m) => ({ role: m.role, content: m.content })),
-      systemPrompt: fullSystemPrompt,
-      settings: chatProxySettings
-    } : {
-      messages: [
-        { role: "system", content: fullSystemPrompt },
-        ...nextMessages.map((m) => ({ role: m.role, content: m.content }))
-      ],
-      stream: true,
-      // retrievalOverrides (max_num_results/match_threshold/etc, per Cloudflare's
-      // ai_search_options.retrieval schema) is a per-request debugging/tuning
-      // escape hatch. `filters` is always present regardless, since the
-      // public/-only retrieval scope (see module SECURITY note) must never be
-      // overridable by whatever the caller passes in.
-      ai_search_options: { retrieval: { ...retrievalOverrides, filters: PUBLIC_FILTER } }
-    };
-    let assistantText = "";
-    let chunks = [];
-    let metaAccum = {};
-    try {
-      const res = await fetch(apiUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-        body: JSON.stringify(body)
-      });
-      if (!res.ok || !res.body) throw new Error(`${res.status} ${res.statusText}`);
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const parts = buffer.split("\n\n");
-        buffer = parts.pop();
-        for (const part of parts) {
-          const parsed = parseSSEBlock(part);
-          if (!parsed || parsed.data === "[DONE]") continue;
-          if (parsed.eventName === "chunks") {
-            try {
-              chunks = JSON.parse(parsed.data);
-            } catch {
-            }
-            continue;
-          }
-          if (parsed.eventName === "status") {
-            setStatusText(parsed.data);
-            continue;
-          }
-          if (parsed.eventName === "meta") {
-            try {
-              Object.assign(metaAccum, JSON.parse(parsed.data));
-            } catch {
-            }
-            continue;
-          }
-          try {
-            const frame = JSON.parse(parsed.data);
-            const delta = (_c = (_b = (_a = frame.choices) == null ? void 0 : _a[0]) == null ? void 0 : _b.delta) == null ? void 0 : _c.content;
-            if (delta) {
-              assistantText += delta;
-              setStreaming(assistantText);
-              scrollToBottom();
-            }
-          } catch {
-          }
-        }
-      }
-      if (!assistantText) throw new Error("empty response");
-      const diag = Object.keys(metaAccum).length ? { ...metaAccum, docIds: chunks.map((c) => {
-        var _a2, _b2;
-        return (_b2 = (_a2 = c.item) == null ? void 0 : _a2.metadata) == null ? void 0 : _b2.entity_id;
-      }).filter(Boolean) } : void 0;
-      const withAssistant = [...nextMessages, { role: "assistant", content: assistantText, chunks, diag }];
-      setMessages(withAssistant);
-      saveMessages(persistKey, withAssistant);
-      if (chatLoggingEnabled && !loggingOptedOut) {
-        logChatTurn(chatLogEndpoint, sessionIdRef.current, languageName, withAssistant, fullSystemPrompt, chatProxySettings);
-      }
-      onSearchChunks == null ? void 0 : onSearchChunks(chunks);
-    } catch (err) {
-      setError(strings.error);
-    } finally {
-      setStreaming("");
-      setStatusText("");
-      setPending(false);
-      scrollToBottom();
-    }
-  }, [pending, messages, aiSearchId, languageName, persistKey, strings.error, scrollToBottom, intake, chatLoggingEnabled, chatLogEndpoint, systemPrompt, loggingOptedOut, retrievalOverrides, onSearchChunks, chatProxyEndpoint, chatProxySettings]);
-  const handleFormSubmit = useCallback((e) => {
-    e.preventDefault();
-    const extra = pendingExtraPromptRef.current;
-    pendingExtraPromptRef.current = "";
-    sendQuery(input, extra);
-  }, [input, sendQuery]);
-  const handleStarterPick = useCallback((starter) => {
-    var _a;
-    setPreviewQuestion("");
-    if (autoSendStarters) {
-      sendQuery(starter.question, starter.extraPrompt);
-    } else {
-      setInput(starter.question);
-      pendingExtraPromptRef.current = starter.extraPrompt || "";
-      (_a = inputRef.current) == null ? void 0 : _a.focus();
-    }
-  }, [autoSendStarters, sendQuery]);
-  useImperativeHandle(ref, () => ({
-    resendLastQuery: () => {
-      const lastUser = [...messages].reverse().find((m) => m.role === "user");
-      if (lastUser) sendQuery(lastUser.content);
-    }
-  }), [messages, sendQuery]);
-  if (!aiSearchId) return null;
-  const panel = /* @__PURE__ */ jsxs2("div", { className: "sui-chat-panel", children: [
-    /* @__PURE__ */ jsxs2("div", { className: "sui-chat-header", children: [
-      /* @__PURE__ */ jsx2(Bot, { className: "sui-chat-icon" }),
-      /* @__PURE__ */ jsx2("span", { className: "sui-chat-header-title", children: strings.title }),
-      /* @__PURE__ */ jsxs2("div", { className: "sui-chat-header-actions", children: [
-        /* @__PURE__ */ jsx2(
-          "button",
-          {
-            type: "button",
-            className: "sui-chat-clear-btn",
-            onClick: clearChat,
-            "aria-label": strings.clearChat,
-            title: strings.clearChat,
-            children: /* @__PURE__ */ jsx2(Trash2, { className: "sui-chat-icon-sm" })
-          }
-        ),
-        isBubble && /* @__PURE__ */ jsx2(
-          "button",
-          {
-            type: "button",
-            className: "sui-chat-close-btn",
-            onClick: () => setOpen(false),
-            "aria-label": strings.closeChat,
-            children: /* @__PURE__ */ jsx2(X, { className: "sui-chat-icon-sm" })
-          }
-        )
-      ] })
-    ] }),
-    /* @__PURE__ */ jsx2(
-      IntakeForm,
-      {
-        intake,
-        onChange: setIntake,
-        askName,
-        askAge,
-        askGender,
-        strings,
-        open: intakeOpen,
-        onToggle: () => setIntakeOpen((v) => !v)
-      }
-    ),
-    /* @__PURE__ */ jsxs2("div", { className: "sui-chat-log", role: "log", "aria-relevant": "additions", ref: logRef, children: [
-      messages.length === 0 && !streaming && /* @__PURE__ */ jsxs2(Fragment, { children: [
-        visibleStarters.length > 0 && /* @__PURE__ */ jsx2("p", { className: "sui-chat-log-hint", children: strings.startHint }),
-        /* @__PURE__ */ jsx2(StarterButtons, { starters: visibleStarters, onPick: handleStarterPick, onPreview: setPreviewQuestion })
-      ] }),
-      messages.map((m, i) => /* @__PURE__ */ jsx2(Message, { ...m, strings, moreInfoHrefPattern }, i)),
-      streaming && /* @__PURE__ */ jsx2(Message, { role: "assistant", content: streaming, streaming: true, strings, moreInfoHrefPattern })
-    ] }),
-    /* @__PURE__ */ jsx2("div", { className: "sui-chat-status", role: "status", "aria-live": "polite", children: pending && !error ? formatStatus(statusText, strings) || strings.thinking : "" }),
-    error && /* @__PURE__ */ jsxs2("p", { className: "sui-chat-error", children: [
-      /* @__PURE__ */ jsx2(AlertCircle, { className: "sui-chat-icon-sm" }),
-      " ",
-      error
-    ] }),
-    /* @__PURE__ */ jsxs2("form", { className: "sui-chat-form", onSubmit: handleFormSubmit, children: [
-      /* @__PURE__ */ jsx2("label", { className: "sui-chat-sr-only", htmlFor: inputId, children: strings.inputLabel }),
-      /* @__PURE__ */ jsxs2("div", { className: "sui-chat-input-wrap", children: [
-        /* @__PURE__ */ jsx2(
-          "input",
-          {
-            ref: inputRef,
-            id: inputId,
-            type: "text",
-            className: "sui-chat-input",
-            placeholder: previewQuestion || placeholder || strings.inputLabel,
-            value: input,
-            onChange: (e) => {
-              setInput(e.target.value);
-              pendingExtraPromptRef.current = "";
-            },
-            disabled: pending,
-            autoComplete: "off"
-          }
-        ),
-        input && /* @__PURE__ */ jsx2(
-          "button",
-          {
-            type: "button",
-            className: "sui-chat-clear-input-btn",
-            onClick: () => {
-              var _a;
-              setInput("");
-              pendingExtraPromptRef.current = "";
-              (_a = inputRef.current) == null ? void 0 : _a.focus();
-            },
-            "aria-label": strings.clearInput,
-            title: strings.clearInput,
-            children: /* @__PURE__ */ jsx2(X, { className: "sui-chat-icon-sm" })
-          }
-        )
-      ] }),
-      /* @__PURE__ */ jsx2("button", { type: "submit", className: "sui-chat-send-btn", disabled: pending || !input.trim(), "aria-label": strings.send, children: pending ? /* @__PURE__ */ jsx2(Loader2, { className: "sui-chat-icon sui-chat-spin" }) : /* @__PURE__ */ jsx2(Send, { className: "sui-chat-icon" }) })
-    ] }),
-    /* @__PURE__ */ jsxs2("p", { className: "sui-chat-disclaimer", children: [
-      strings.disclaimer,
-      chatLoggingEnabled && (loggingOptedOut ? /* @__PURE__ */ jsxs2("span", { className: "sui-chat-logging-note", children: [
-        " ",
-        strings.loggingOptedOutNotice
-      ] }) : /* @__PURE__ */ jsxs2("span", { className: "sui-chat-logging-note", children: [
-        " ",
-        strings.loggingNotice,
-        " ",
-        /* @__PURE__ */ jsx2("button", { type: "button", className: "sui-chat-logging-optout-link", onClick: () => setOptOutModalOpen(true), children: strings.loggingOptOutLink })
-      ] }))
-    ] }),
-    optOutModalOpen && /* @__PURE__ */ jsx2(
-      LoggingOptOutModal,
-      {
-        strings,
-        titleId: optOutTitleId,
-        onConfirm: confirmLoggingOptOut,
-        onCancel: () => setOptOutModalOpen(false)
-      }
-    )
-  ] });
-  if (!isBubble) {
-    return /* @__PURE__ */ jsx2("section", { className: "sui-chat-widget sui-chat-widget--chat-page", dir, children: panel });
-  }
-  return /* @__PURE__ */ jsx2("section", { className: "sui-chat-widget sui-chat-widget--chat-bubble", dir, children: open ? panel : /* @__PURE__ */ jsx2(
-    "button",
-    {
-      ref: toggleRef,
-      type: "button",
-      className: "sui-chat-bubble-toggle",
-      "aria-expanded": open,
-      "aria-label": strings.openChat,
-      onClick: () => setOpen(true),
-      children: /* @__PURE__ */ jsx2(Bot, { className: "sui-chat-icon-lg" })
-    }
-  ) });
-});
-var ChatInterface_default = ChatInterface;
-
-// src/DynamicContentGrid.jsx
-import { useState as useState2 } from "react";
-import { Image as ImageIcon, User as UserIcon, Folder as FolderIcon } from "lucide-react";
-import { Fragment as Fragment2, jsx as jsx3, jsxs as jsxs3 } from "react/jsx-runtime";
-function trunc(s, n = 120) {
-  const str = String(s ?? "");
-  return str.length > n ? str.slice(0, n) + "\u2026" : str;
-}
-function fmtDate(v, locale = "nl-NL") {
-  try {
-    return new Date(v).toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" });
-  } catch {
-    return String(v);
-  }
-}
-function getByPath(item, path) {
-  if (!item || !path) return "";
-  let cur = item;
-  for (const p of path.split(".")) {
-    if (cur == null || typeof cur !== "object") return "";
-    cur = cur[p];
-  }
-  return cur ?? "";
-}
-function getUniqueValues(items, field) {
-  const counts = {};
-  for (const item of items) {
-    const val = String(getByPath(item, field) ?? "").trim();
-    if (val) counts[val] = (counts[val] ?? 0) + 1;
-  }
-  return Object.keys(counts).sort().map((v) => ({ value: v, count: counts[v] }));
-}
-function applyUserFilters(baseItems, activeFilters, searchTerm, filterBar) {
-  var _a;
-  let result = baseItems;
-  if (searchTerm) {
-    const term = searchTerm.toLowerCase().trim();
-    const searchFields = ((_a = filterBar == null ? void 0 : filterBar.searchFields) == null ? void 0 : _a.length) ? filterBar.searchFields : ["name", "title", "description"];
-    result = result.filter((item) => searchFields.some((f) => String(getByPath(item, f) ?? "").toLowerCase().includes(term)));
-  }
-  for (const [field, values] of Object.entries(activeFilters)) {
-    if (!(values == null ? void 0 : values.length)) continue;
-    const valSet = new Set(values.map((v) => String(v).toLowerCase()));
-    result = result.filter((item) => valSet.has(String(getByPath(item, field) ?? "").toLowerCase()));
-  }
-  return result;
-}
-function Badge({ value }) {
-  return value ? /* @__PURE__ */ jsx3("span", { className: "sui-dyn-badge", children: value }) : null;
-}
-function CardImage({ src }) {
-  if (src) return /* @__PURE__ */ jsx3("img", { src, alt: "", loading: "lazy" });
-  return /* @__PURE__ */ jsx3("div", { className: "sui-dyn-img-placeholder", children: /* @__PURE__ */ jsx3(ImageIcon, { className: "sui-dyn-icon" }) });
-}
-function defaultDetailUrl(item, fieldMap, collection) {
-  const pattern = (fieldMap == null ? void 0 : fieldMap.detailUrl) ?? "";
-  if (pattern) {
-    return pattern.replace(/\{\{id\}\}/g, String(item.id ?? "")).replace(/\{\{slug\}\}/g, String(item.slug ?? item.id ?? ""));
-  }
-  const idOrSlug = item.slug ?? item.id;
-  return collection && idOrSlug ? `/${collection}/${idOrSlug}` : "";
-}
-function buildMoreInfoUrl(item, fieldMap) {
-  const pattern = (fieldMap == null ? void 0 : fieldMap.moreInfoUrl) ?? "";
-  if (!pattern) return "";
-  return pattern.replace(/\{\{id\}\}/g, String(item.id ?? "")).replace(/\{\{slug\}\}/g, String(item.slug ?? item.id ?? ""));
-}
-function PreviewCard({ item, design, fieldMap, collection, detailUrlBuilder, dateLocale, strings }) {
-  const g = (slot) => {
-    const field = fieldMap[slot];
-    return field ? getByPath(item, field) : "";
-  };
-  switch (design) {
-    case "image-card":
-      return /* @__PURE__ */ jsxs3(Fragment2, { children: [
-        /* @__PURE__ */ jsx3("div", { className: "sui-dyn-img", children: /* @__PURE__ */ jsx3(CardImage, { src: g("image") }) }),
-        /* @__PURE__ */ jsxs3("div", { className: "sui-dyn-body", children: [
-          /* @__PURE__ */ jsx3(Badge, { value: g("badge") }),
-          /* @__PURE__ */ jsx3("h3", { children: g("heading") || item.name || item.title || "\u2014" }),
-          g("subheading") && /* @__PURE__ */ jsx3("p", { className: "sui-dyn-sub", children: String(g("subheading")) }),
-          g("body") && /* @__PURE__ */ jsx3("p", { className: "sui-dyn-desc", children: trunc(g("body")) })
-        ] })
-      ] });
-    case "compact-card":
-      return /* @__PURE__ */ jsxs3("div", { className: "sui-dyn-body sui-dyn-body-full", children: [
-        /* @__PURE__ */ jsx3("h3", { children: g("heading") || item.name || item.title || "\u2014" }),
-        g("subheading") && /* @__PURE__ */ jsx3("p", { className: "sui-dyn-sub", children: String(g("subheading")) }),
-        g("body") && /* @__PURE__ */ jsx3("p", { className: "sui-dyn-desc", children: trunc(g("body"), 100) }),
-        g("date") && /* @__PURE__ */ jsx3("p", { className: "sui-dyn-date", children: fmtDate(g("date"), dateLocale) })
-      ] });
-    case "stat-card":
-      return /* @__PURE__ */ jsxs3("div", { className: "sui-dyn-body sui-dyn-stat-body", children: [
-        /* @__PURE__ */ jsx3("p", { className: "sui-dyn-stat-label", children: g("heading") || item.name || "\u2014" }),
-        /* @__PURE__ */ jsx3("p", { className: "sui-dyn-stat-value", children: String(g("number") || "\u2014") }),
-        g("subheading") && /* @__PURE__ */ jsx3("p", { className: "sui-dyn-sub", children: String(g("subheading")) }),
-        /* @__PURE__ */ jsx3(Badge, { value: g("badge") })
-      ] });
-    case "person-card":
-      return /* @__PURE__ */ jsxs3(Fragment2, { children: [
-        /* @__PURE__ */ jsx3("div", { className: "sui-dyn-avatar-wrap", children: g("image") ? /* @__PURE__ */ jsx3("img", { src: String(g("image")), className: "sui-dyn-avatar", alt: "" }) : /* @__PURE__ */ jsx3("div", { className: "sui-dyn-avatar-placeholder", children: /* @__PURE__ */ jsx3(UserIcon, { className: "sui-dyn-icon" }) }) }),
-        /* @__PURE__ */ jsxs3("div", { className: "sui-dyn-body sui-dyn-person-body", children: [
-          /* @__PURE__ */ jsx3("h3", { children: g("heading") || item.name || "\u2014" }),
-          g("subheading") && /* @__PURE__ */ jsx3("p", { className: "sui-dyn-sub", children: String(g("subheading")) }),
-          g("body") && /* @__PURE__ */ jsx3("p", { className: "sui-dyn-desc", children: trunc(g("body"), 100) })
-        ] })
-      ] });
-    case "contact-card":
-      return /* @__PURE__ */ jsxs3("div", { className: "sui-dyn-body sui-dyn-body-full", children: [
-        /* @__PURE__ */ jsx3("h3", { children: g("heading") || item.name || item.title || "\u2014" }),
-        /* @__PURE__ */ jsx3(
-          ActionButtons,
-          {
-            tel: g("tel"),
-            email: g("email"),
-            url: g("website"),
-            address: g("address"),
-            moreInfoHref: buildMoreInfoUrl(item, fieldMap),
-            strings
-          }
-        )
-      ] });
-    case "document-card":
-      return /* @__PURE__ */ jsxs3(Fragment2, { children: [
-        /* @__PURE__ */ jsx3("div", { className: "sui-dyn-doc-icon", children: /* @__PURE__ */ jsx3(FolderIcon, { className: "sui-dyn-icon" }) }),
-        /* @__PURE__ */ jsxs3("div", { className: "sui-dyn-body sui-dyn-body-full", children: [
-          /* @__PURE__ */ jsx3("h3", { children: g("heading") || item.name || item.title || "\u2014" }),
-          /* @__PURE__ */ jsxs3("div", { className: "sui-dyn-doc-meta", children: [
-            /* @__PURE__ */ jsx3(Badge, { value: g("badge") }),
-            g("date") && /* @__PURE__ */ jsx3("span", { className: "sui-dyn-date", children: fmtDate(g("date"), dateLocale) })
-          ] }),
-          g("body") && /* @__PURE__ */ jsx3("p", { className: "sui-dyn-desc", children: trunc(g("body"), 100) })
-        ] })
-      ] });
-    default:
-      return /* @__PURE__ */ jsx3("div", { className: "sui-dyn-body sui-dyn-body-full", children: /* @__PURE__ */ jsx3("h3", { children: item.name ?? item.title ?? String(item.id ?? "\u2014") }) });
-  }
-}
-function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFilters, setSearchTerm, strings }) {
-  const fb = filterBar ?? {};
-  const hasSearch = fb.searchEnabled;
-  const sortedFilters = (fb.filters ?? []).filter((f) => f.field).slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  if (!hasSearch && sortedFilters.length === 0) return null;
-  return /* @__PURE__ */ jsxs3("div", { className: `sui-dyn-filterbar sui-dyn-filterbar--${fb.layout ?? "horizontal"}`, children: [
-    hasSearch && /* @__PURE__ */ jsx3("div", { className: "sui-dyn-filter-group", children: /* @__PURE__ */ jsx3(
-      "input",
-      {
-        type: "search",
-        className: "sui-dyn-search-input",
-        value: searchTerm,
-        placeholder: (fb.searchLabel || strings.search) + "\u2026",
-        onChange: (e) => setSearchTerm(e.target.value)
-      }
-    ) }),
-    sortedFilters.map((filterDef) => {
-      const options = getUniqueValues(allItems, filterDef.field);
-      if (options.length <= 1) return null;
-      const selected = activeFilters[filterDef.field] ?? [];
-      const label = filterDef.label || filterDef.field;
-      return /* @__PURE__ */ jsxs3("div", { className: "sui-dyn-filter-group", children: [
-        /* @__PURE__ */ jsx3("span", { className: "sui-dyn-filter-label", children: label }),
-        filterDef.type === "select" ? /* @__PURE__ */ jsxs3(
-          "select",
-          {
-            className: "sui-dyn-filter-select",
-            value: selected[0] ?? "",
-            onChange: (e) => setActiveFilters((prev) => ({ ...prev, [filterDef.field]: e.target.value ? [e.target.value] : [] })),
-            children: [
-              /* @__PURE__ */ jsx3("option", { value: "", children: strings.all }),
-              options.map((o) => /* @__PURE__ */ jsxs3("option", { value: o.value, children: [
-                o.value,
-                filterDef.showCount ? ` (${o.count})` : ""
-              ] }, o.value))
-            ]
-          }
-        ) : /* @__PURE__ */ jsx3("div", { className: `sui-dyn-filter-options sui-dyn-filter-options--${filterDef.type ?? "checkbox"}`, children: options.map((o) => /* @__PURE__ */ jsxs3("label", { className: "sui-dyn-filter-option", children: [
-          /* @__PURE__ */ jsx3(
-            "input",
-            {
-              type: filterDef.type === "radio" ? "radio" : "checkbox",
-              name: `sui-dyn-filter-${filterDef.id}`,
-              value: o.value,
-              checked: filterDef.type === "radio" ? selected[0] === o.value : selected.includes(o.value),
-              onChange: (e) => {
-                if (filterDef.type === "radio") {
-                  setActiveFilters((prev) => ({ ...prev, [filterDef.field]: e.target.checked ? [o.value] : [] }));
-                } else {
-                  setActiveFilters((prev) => {
-                    const cur = prev[filterDef.field] ?? [];
-                    return { ...prev, [filterDef.field]: e.target.checked ? [...cur, o.value] : cur.filter((v) => v !== o.value) };
-                  });
-                }
-              }
-            }
-          ),
-          " ",
-          o.value,
-          filterDef.showCount ? ` (${o.count})` : ""
-        ] }, o.value)) })
-      ] }, filterDef.id);
-    })
-  ] });
-}
-var DEFAULT_STRINGS2 = {
-  noResults: "No results found.",
-  all: "All",
-  clearFilters: "\xD7 Clear filters",
-  search: "Search",
-  call: "Call",
-  email: "Email",
-  website: "Website",
-  route: "Directions",
-  moreInfo: "More info"
-};
-function DynamicContentGrid({
-  items = [],
-  loading = false,
-  error = null,
-  cardDesign = "image-card",
-  fieldMap = {},
-  cols = 3,
-  filterBar: filterBarConfig = {},
-  title,
-  collection,
-  detailUrlBuilder,
-  strings: stringsProp,
-  dateLocale = "nl-NL"
-}) {
-  const strings = { ...DEFAULT_STRINGS2, ...stringsProp };
-  const [activeFilters, setActiveFilters] = useState2({});
-  const [searchTerm, setSearchTerm] = useState2("");
-  const displayItems = applyUserFilters(items, activeFilters, searchTerm, filterBarConfig);
-  const hasFilterBar = filterBarConfig.enabled && (filterBarConfig.searchEnabled || (filterBarConfig.filters ?? []).some((f) => f.field));
-  const pos = filterBarConfig.position ?? "top";
-  const hasActive = searchTerm.length > 0 || Object.values(activeFilters).some((v) => v.length > 0);
-  const buildHref = (item) => detailUrlBuilder ? detailUrlBuilder(item) : defaultDetailUrl(item, fieldMap, collection);
-  const gridContent = /* @__PURE__ */ jsxs3(Fragment2, { children: [
-    loading && /* @__PURE__ */ jsx3("div", { className: "sui-dyn-grid", style: { "--sui-dyn-cols": Math.min(cols, 4) }, children: Array.from({ length: Math.min(cols * 2, 6) }).map((_, i) => /* @__PURE__ */ jsx3("div", { className: "sui-dyn-skeleton" }, i)) }),
-    !loading && error && /* @__PURE__ */ jsxs3("p", { className: "sui-dyn-error", children: [
-      "\u26A0 ",
-      error
-    ] }),
-    !loading && !error && displayItems.length === 0 && /* @__PURE__ */ jsx3("p", { className: "sui-dyn-no-items", children: strings.noResults }),
-    !loading && !error && displayItems.length > 0 && /* @__PURE__ */ jsx3("div", { className: "sui-dyn-grid", style: { "--sui-dyn-cols": Math.min(cols, 4) }, children: displayItems.map((item) => {
-      const href = cardDesign === "contact-card" ? "" : buildHref(item);
-      const Wrap = href ? "a" : "article";
-      return /* @__PURE__ */ jsx3(Wrap, { className: `sui-dyn-card sui-dyn-card-${cardDesign}`, ...href ? { href } : {}, children: /* @__PURE__ */ jsx3(PreviewCard, { item, design: cardDesign, fieldMap, collection, detailUrlBuilder, dateLocale, strings }) }, item.id ?? item.name);
-    }) })
-  ] });
-  return /* @__PURE__ */ jsxs3("section", { className: "sui-dyn-wrap", children: [
-    title && /* @__PURE__ */ jsx3("h2", { className: "sui-dyn-title", children: title }),
-    hasFilterBar ? /* @__PURE__ */ jsxs3("div", { className: `sui-dyn-layout sui-dyn-layout--${pos}`, children: [
-      pos === "right" || pos === "bottom" ? /* @__PURE__ */ jsxs3(Fragment2, { children: [
-        /* @__PURE__ */ jsx3("div", { className: "sui-dyn-grid-wrap", children: gridContent }),
-        /* @__PURE__ */ jsx3(
-          FilterBar,
-          {
-            allItems: items,
-            filterBar: filterBarConfig,
-            activeFilters,
-            searchTerm,
-            setActiveFilters,
-            setSearchTerm,
-            strings
-          }
-        )
-      ] }) : /* @__PURE__ */ jsxs3(Fragment2, { children: [
-        /* @__PURE__ */ jsx3(
-          FilterBar,
-          {
-            allItems: items,
-            filterBar: filterBarConfig,
-            activeFilters,
-            searchTerm,
-            setActiveFilters,
-            setSearchTerm,
-            strings
-          }
-        ),
-        /* @__PURE__ */ jsx3("div", { className: "sui-dyn-grid-wrap", children: gridContent })
-      ] }),
-      hasActive && /* @__PURE__ */ jsx3("button", { type: "button", className: "sui-dyn-reset-btn", onClick: () => {
-        setActiveFilters({});
-        setSearchTerm("");
-      }, children: strings.clearFilters })
-    ] }) : gridContent
-  ] });
-}
-
 // src/chatStrings.js
 var CHAT_STRINGS = {
   nl: {
@@ -1419,6 +504,956 @@ var CHAT_STRINGS = {
     statusGenerating: "\u6B63\u5728\u51C6\u5907\u7B54\u6848\u2026"
   }
 };
+
+// src/ChatInterface.jsx
+import { Fragment, jsx as jsx2, jsxs as jsxs2 } from "react/jsx-runtime";
+var PUBLIC_FILTER = { folder: { $gte: "public/", $lt: "public0" } };
+var DEFAULT_STRINGS = {
+  title: "Ask your question",
+  inputLabel: "Type your question",
+  send: "Send",
+  startHint: "Choose a topic or ask a question below",
+  thinking: "Thinking\u2026",
+  error: "Something went wrong. Please try again.",
+  retry: "Try again",
+  relatedHelp: "Related help",
+  call: "Call",
+  email: "Email",
+  website: "Website",
+  route: "Directions",
+  moreInfo: "More info",
+  openChat: "Open chat",
+  closeChat: "Close chat",
+  clearChat: "Clear chat",
+  clearInput: "Clear",
+  you: "You",
+  assistant: "Assistant",
+  disclaimer: "This is an AI assistant. Always double-check important details with the organisation itself.",
+  aboutYouTitle: "About you (optional)",
+  nameLabel: "What should we call you?",
+  ageLabel: "Your age",
+  genderLabel: "Your gender",
+  intakeNotStored: "Optional. Never stored.",
+  loggingNotice: "We may use this conversation to help improve our services.",
+  loggingOptOutLink: "Opt out for this session",
+  loggingOptOutModalTitle: "Turn off conversation logging?",
+  loggingOptOutModalBody: "This stops us from saving this conversation for review, for the rest of this browser session. You can keep chatting as normal.",
+  loggingOptOutConfirm: "Turn off for this session",
+  loggingOptOutCancel: "Cancel",
+  loggingOptedOutNotice: "Logging is turned off for this session.",
+  statusSearching: "Searching\u2026",
+  statusFound: "{n} results found\u2026",
+  statusGenerating: "Preparing an answer\u2026"
+};
+function escapeHtml(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+function renderMarkdown(text) {
+  let html = escapeHtml(text);
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) => {
+    const safe = sanitizeUrl(url);
+    return safe ? `<a href="${safe}" target="_blank" rel="noopener noreferrer">${label}</a>` : label;
+  });
+  html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>");
+  html = html.split(/\n{2,}/).map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`).join("");
+  return DOMPurify.sanitize(html);
+}
+function parseSSEBlock(block) {
+  let eventName = "message";
+  const dataLines = [];
+  for (const line of block.split("\n")) {
+    if (line.startsWith("event:")) eventName = line.slice(6).trim();
+    else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+  }
+  return dataLines.length ? { eventName, data: dataLines.join("\n") } : null;
+}
+function formatStatus(status, strings) {
+  if (!status) return "";
+  if (status === "searching") return strings.statusSearching ?? strings.thinking;
+  if (status === "generating") return strings.statusGenerating ?? strings.thinking;
+  const found = status.match(/^found:(\d+)$/);
+  if (found) return (strings.statusFound ?? strings.thinking).replace("{n}", found[1]);
+  return strings.thinking;
+}
+function dedupeSources(chunks) {
+  var _a;
+  const byId = /* @__PURE__ */ new Map();
+  for (const c of chunks ?? []) {
+    const meta = (_a = c.item) == null ? void 0 : _a.metadata;
+    if (!(meta == null ? void 0 : meta.entity_id)) continue;
+    const existing = byId.get(meta.entity_id);
+    if (!existing || (c.score ?? 0) > existing.score) {
+      byId.set(meta.entity_id, { meta, score: c.score ?? 0 });
+    }
+  }
+  return [...byId.values()].sort((a, b) => b.score - a.score).slice(0, 4);
+}
+var MAX_STORED_MESSAGES = 40;
+function loadMessages(key) {
+  if (!key) return [];
+  try {
+    const raw = sessionStorage.getItem(key);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+function saveMessages(key, messages) {
+  if (!key) return;
+  try {
+    sessionStorage.setItem(key, JSON.stringify(messages.slice(-MAX_STORED_MESSAGES)));
+  } catch {
+  }
+}
+function randomId() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+function getOrCreateLogSessionId(key) {
+  if (!key) return randomId();
+  const storageKey = `${key}:logId`;
+  try {
+    const existing = sessionStorage.getItem(storageKey);
+    if (existing) return existing;
+    const created = randomId();
+    sessionStorage.setItem(storageKey, created);
+    return created;
+  } catch {
+    return randomId();
+  }
+}
+function logChatTurn(endpoint, sessionId, language, messages, systemPrompt, settings) {
+  if (!endpoint) return;
+  try {
+    const diagnostics = messages.map((m, turnIndex) => m.role === "assistant" && m.diag ? { turnIndex, ...m.diag } : null).filter(Boolean);
+    fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId,
+        language,
+        messages: messages.map((m) => ({ role: m.role, content: m.content })),
+        systemPrompt,
+        settings,
+        diagnostics
+      }),
+      keepalive: true
+    }).catch(() => {
+    });
+  } catch {
+  }
+}
+var LOGGING_OPT_OUT_KEY = "sui-chat-logging-opted-out";
+function isLoggingOptedOut() {
+  try {
+    return sessionStorage.getItem(LOGGING_OPT_OUT_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+function persistLoggingOptOut() {
+  try {
+    sessionStorage.setItem(LOGGING_OPT_OUT_KEY, "1");
+  } catch {
+  }
+}
+function buildMoreInfoHref(pattern, entityId) {
+  if (!pattern) return null;
+  return pattern.replace("{id}", encodeURIComponent(entityId));
+}
+function parseSourceContext(meta) {
+  try {
+    return JSON.parse(meta.context || "{}");
+  } catch {
+    return {};
+  }
+}
+function getSourceName(meta) {
+  return meta.name || parseSourceContext(meta).naam || "";
+}
+function SourceCard({ meta, strings, moreInfoHrefPattern }) {
+  const ctx = parseSourceContext(meta);
+  const infoHref = buildMoreInfoHref(moreInfoHrefPattern, meta.entity_id);
+  return /* @__PURE__ */ jsxs2("div", { className: "sui-chat-source-card", children: [
+    /* @__PURE__ */ jsx2("div", { className: "sui-chat-source-title", children: getSourceName(meta) }),
+    ctx.adres && /* @__PURE__ */ jsx2("div", { className: "sui-chat-source-address", children: ctx.adres }),
+    /* @__PURE__ */ jsx2(ActionButtons, { tel: ctx.tel, email: ctx.email, url: ctx.url, address: ctx.adres, moreInfoHref: infoHref, strings })
+  ] });
+}
+function buildIntakeContext(intake) {
+  var _a, _b, _c;
+  const parts = [];
+  if ((_a = intake.name) == null ? void 0 : _a.trim()) parts.push(`Their name is ${intake.name.trim()} \u2014 you may use it to sound warm and personal.`);
+  if ((_b = intake.age) == null ? void 0 : _b.trim()) parts.push(`Their age is ${intake.age.trim()}.`);
+  if ((_c = intake.gender) == null ? void 0 : _c.trim()) parts.push(`Their gender: ${intake.gender.trim()}.`);
+  if (!parts.length) return "";
+  return ` ${parts.join(" ")} Never ask them to confirm or repeat this information back.`;
+}
+function buildSystemMessage(languageName, intake, systemPrompt, extraPrompt) {
+  return `Respond in the same language the person is writing in. If you can't confidently tell what language that is, respond in ${languageName} instead. Keep answers concise and easy to read for someone who may be in a stressful situation.${buildIntakeContext(intake)}${(systemPrompt == null ? void 0 : systemPrompt.trim()) ? ` ${systemPrompt.trim()}` : ""}${extraPrompt ? ` ${extraPrompt}` : ""} Reminder: always reply in the same language as the person's own messages, regardless of what language the instructions above are written in.`;
+}
+function IntakeForm({ intake, onChange, askName, askAge, askGender, strings, open, onToggle }) {
+  if (!askName && !askAge && !askGender) return null;
+  return /* @__PURE__ */ jsxs2("div", { className: "sui-chat-intake", children: [
+    /* @__PURE__ */ jsx2("button", { type: "button", className: "sui-chat-intake-toggle", onClick: onToggle, "aria-expanded": open, children: strings.aboutYouTitle }),
+    open && /* @__PURE__ */ jsxs2("div", { className: "sui-chat-intake-fields", children: [
+      askName && /* @__PURE__ */ jsxs2("label", { className: "sui-chat-intake-field", children: [
+        /* @__PURE__ */ jsx2("span", { children: strings.nameLabel }),
+        /* @__PURE__ */ jsx2(
+          "input",
+          {
+            type: "text",
+            value: intake.name,
+            autoComplete: "off",
+            onChange: (e) => onChange({ ...intake, name: e.target.value })
+          }
+        )
+      ] }),
+      askAge && /* @__PURE__ */ jsxs2("label", { className: "sui-chat-intake-field", children: [
+        /* @__PURE__ */ jsx2("span", { children: strings.ageLabel }),
+        /* @__PURE__ */ jsx2(
+          "input",
+          {
+            type: "number",
+            inputMode: "numeric",
+            min: "0",
+            max: "120",
+            value: intake.age,
+            autoComplete: "off",
+            onChange: (e) => onChange({ ...intake, age: e.target.value })
+          }
+        )
+      ] }),
+      askGender && /* @__PURE__ */ jsxs2("label", { className: "sui-chat-intake-field", children: [
+        /* @__PURE__ */ jsx2("span", { children: strings.genderLabel }),
+        /* @__PURE__ */ jsx2(
+          "input",
+          {
+            type: "text",
+            value: intake.gender,
+            autoComplete: "off",
+            onChange: (e) => onChange({ ...intake, gender: e.target.value })
+          }
+        )
+      ] }),
+      /* @__PURE__ */ jsx2("p", { className: "sui-chat-intake-note", children: strings.intakeNotStored })
+    ] })
+  ] });
+}
+function StarterButtons({ starters, onPick, onPreview }) {
+  if (!starters.length) return null;
+  return /* @__PURE__ */ jsx2("div", { className: "sui-chat-starters", children: starters.map((s) => {
+    const Icon = STARTER_ICONS[s.icon] ?? MessageCircle2;
+    return /* @__PURE__ */ jsxs2(
+      "button",
+      {
+        type: "button",
+        className: "sui-chat-starter-btn",
+        onClick: () => onPick(s),
+        onMouseEnter: () => onPreview(s.question),
+        onMouseLeave: () => onPreview(""),
+        onFocus: () => onPreview(s.question),
+        onBlur: () => onPreview(""),
+        children: [
+          /* @__PURE__ */ jsx2(Icon, { className: "sui-chat-icon" }),
+          /* @__PURE__ */ jsx2("span", { children: s.label })
+        ]
+      },
+      s.id
+    );
+  }) });
+}
+function isClarifyingQuestion(content) {
+  return content.trim().endsWith("?");
+}
+function filterMentionedSources(content, sources) {
+  const lower = content.toLowerCase();
+  const mentioned = sources.filter((s) => {
+    const name = getSourceName(s.meta).trim();
+    return name && lower.includes(name.toLowerCase());
+  });
+  return mentioned.length ? mentioned : sources;
+}
+function Message({ role, content, chunks, streaming, strings, moreInfoHrefPattern }) {
+  const sources = role === "assistant" && !isClarifyingQuestion(content) ? filterMentionedSources(content, dedupeSources(chunks)) : [];
+  return /* @__PURE__ */ jsxs2("div", { className: `sui-chat-msg sui-chat-msg--${role}`, children: [
+    /* @__PURE__ */ jsx2("span", { className: "sui-chat-msg-label", children: role === "user" ? strings.you : strings.assistant }),
+    /* @__PURE__ */ jsxs2("div", { className: "sui-chat-msg-bubble", "aria-live": role === "assistant" ? "polite" : void 0, children: [
+      role === "user" ? /* @__PURE__ */ jsx2("div", { className: "sui-chat-msg-text", children: content }) : /* @__PURE__ */ jsx2("div", { className: "sui-chat-msg-text", dangerouslySetInnerHTML: { __html: renderMarkdown(content) } }),
+      streaming && /* @__PURE__ */ jsx2("span", { className: "sui-chat-cursor", "aria-hidden": "true" }),
+      sources.length > 0 && /* @__PURE__ */ jsxs2("div", { className: "sui-chat-sources", children: [
+        /* @__PURE__ */ jsx2("h4", { className: "sui-chat-sources-heading", children: strings.relatedHelp }),
+        /* @__PURE__ */ jsx2("div", { className: "sui-chat-sources-grid", children: sources.map((s) => /* @__PURE__ */ jsx2(SourceCard, { meta: s.meta, strings, moreInfoHrefPattern }, s.meta.entity_id)) })
+      ] })
+    ] })
+  ] });
+}
+function LoggingOptOutModal({ strings, titleId, onConfirm, onCancel }) {
+  return /* @__PURE__ */ jsx2("div", { className: "sui-chat-optout-overlay", onClick: (e) => {
+    if (e.target === e.currentTarget) onCancel();
+  }, children: /* @__PURE__ */ jsxs2("div", { className: "sui-chat-optout-modal", role: "dialog", "aria-modal": "true", "aria-labelledby": titleId, children: [
+    /* @__PURE__ */ jsx2("h3", { id: titleId, className: "sui-chat-optout-title", children: strings.loggingOptOutModalTitle }),
+    /* @__PURE__ */ jsx2("p", { className: "sui-chat-optout-body", children: strings.loggingOptOutModalBody }),
+    /* @__PURE__ */ jsxs2("div", { className: "sui-chat-optout-actions", children: [
+      /* @__PURE__ */ jsx2("button", { type: "button", className: "sui-chat-optout-cancel", onClick: onCancel, children: strings.loggingOptOutCancel }),
+      /* @__PURE__ */ jsx2("button", { type: "button", className: "sui-chat-optout-confirm", onClick: onConfirm, children: strings.loggingOptOutConfirm })
+    ] })
+  ] }) });
+}
+var ChatInterface = forwardRef(function ChatInterface2({
+  aiSearchId,
+  languageName = "English",
+  strings: stringsProp,
+  variant = "chat-page",
+  dir = "ltr",
+  placeholder,
+  moreInfoHrefPattern = null,
+  persistKey = null,
+  askName = false,
+  askAge = false,
+  askGender = false,
+  starters = [],
+  autoSendStarters = false,
+  chatLoggingEnabled = false,
+  chatLogEndpoint = null,
+  systemPrompt = "",
+  retrievalOverrides = null,
+  onSearchChunks = null,
+  botName = "",
+  chatProxyEndpoint = null,
+  chatProxySettings = null
+}, ref) {
+  const [detectedLangCode, setDetectedLangCode] = useState(null);
+  const autoStrings = detectedLangCode ? CHAT_STRINGS[detectedLangCode] : null;
+  const strings = { ...DEFAULT_STRINGS, ...autoStrings ?? stringsProp, ...(botName == null ? void 0 : botName.trim()) ? { assistant: botName.trim() } : {} };
+  const effectiveLanguageName = (autoStrings == null ? void 0 : autoStrings.languageName) ?? languageName;
+  const isBubble = variant === "chat-bubble";
+  const visibleStarters = (starters ?? []).filter((s) => s.active !== false);
+  const [open, setOpen] = useState(!isBubble);
+  const [intake, setIntake] = useState({ name: "", age: "", gender: "" });
+  const [intakeOpen, setIntakeOpen] = useState(true);
+  const pendingExtraPromptRef = useRef("");
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [previewQuestion, setPreviewQuestion] = useState("");
+  const [streaming, setStreaming] = useState("");
+  const [pending, setPending] = useState(false);
+  const [statusText, setStatusText] = useState("");
+  const [error, setError] = useState("");
+  const logRef = useRef(null);
+  const inputRef = useRef(null);
+  const toggleRef = useRef(null);
+  const inputId = useId();
+  const sessionIdRef = useRef(null);
+  if (sessionIdRef.current == null) sessionIdRef.current = getOrCreateLogSessionId(persistKey);
+  const [loggingOptedOut, setLoggingOptedOutState] = useState(false);
+  const [optOutModalOpen, setOptOutModalOpen] = useState(false);
+  const optOutTitleId = useId();
+  useEffect(() => {
+    if (chatLoggingEnabled) setLoggingOptedOutState(isLoggingOptedOut());
+  }, [chatLoggingEnabled]);
+  const confirmLoggingOptOut = useCallback(() => {
+    persistLoggingOptOut();
+    setLoggingOptedOutState(true);
+    setOptOutModalOpen(false);
+  }, []);
+  const scrollToBottom = useCallback(() => {
+    requestAnimationFrame(() => {
+      if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+    });
+  }, []);
+  useEffect(() => {
+    if (open && inputRef.current) inputRef.current.focus();
+  }, [open]);
+  useEffect(() => {
+    const stored = loadMessages(persistKey);
+    if (stored.length) setMessages(stored);
+  }, []);
+  const clearChat = useCallback(() => {
+    var _a;
+    setMessages([]);
+    setError("");
+    saveMessages(persistKey, []);
+    if (persistKey) {
+      try {
+        sessionStorage.removeItem(persistKey);
+      } catch {
+      }
+    }
+    (_a = inputRef.current) == null ? void 0 : _a.focus();
+  }, [persistKey]);
+  const sendQuery = useCallback(async (query, extraPrompt = "") => {
+    var _a, _b, _c;
+    query = query.trim();
+    if (!query || pending) return;
+    setError("");
+    const nextMessages = [...messages, { role: "user", content: query }];
+    setMessages(nextMessages);
+    saveMessages(persistKey, nextMessages);
+    setInput("");
+    setIntakeOpen(false);
+    setPending(true);
+    setStreaming(" ");
+    scrollToBottom();
+    const fullSystemPrompt = buildSystemMessage(effectiveLanguageName, intake, systemPrompt, extraPrompt);
+    const usingProxy = !!chatProxyEndpoint;
+    const apiUrl = usingProxy ? chatProxyEndpoint : `https://${aiSearchId}.search.ai.cloudflare.com/chat/completions`;
+    const body = usingProxy ? {
+      aiSearchId,
+      messages: nextMessages.map((m) => ({ role: m.role, content: m.content })),
+      systemPrompt: fullSystemPrompt,
+      settings: chatProxySettings
+    } : {
+      messages: [
+        { role: "system", content: fullSystemPrompt },
+        ...nextMessages.map((m) => ({ role: m.role, content: m.content }))
+      ],
+      stream: true,
+      // retrievalOverrides (max_num_results/match_threshold/etc, per Cloudflare's
+      // ai_search_options.retrieval schema) is a per-request debugging/tuning
+      // escape hatch. `filters` is always present regardless, since the
+      // public/-only retrieval scope (see module SECURITY note) must never be
+      // overridable by whatever the caller passes in.
+      ai_search_options: { retrieval: { ...retrievalOverrides, filters: PUBLIC_FILTER } }
+    };
+    let assistantText = "";
+    let chunks = [];
+    let metaAccum = {};
+    try {
+      const res = await fetch(apiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok || !res.body) throw new Error(`${res.status} ${res.statusText}`);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop();
+        for (const part of parts) {
+          const parsed = parseSSEBlock(part);
+          if (!parsed || parsed.data === "[DONE]") continue;
+          if (parsed.eventName === "chunks") {
+            try {
+              chunks = JSON.parse(parsed.data);
+            } catch {
+            }
+            continue;
+          }
+          if (parsed.eventName === "status") {
+            setStatusText(parsed.data);
+            continue;
+          }
+          if (parsed.eventName === "meta") {
+            try {
+              Object.assign(metaAccum, JSON.parse(parsed.data));
+            } catch {
+            }
+            continue;
+          }
+          try {
+            const frame = JSON.parse(parsed.data);
+            const delta = (_c = (_b = (_a = frame.choices) == null ? void 0 : _a[0]) == null ? void 0 : _b.delta) == null ? void 0 : _c.content;
+            if (delta) {
+              assistantText += delta;
+              setStreaming(assistantText);
+              scrollToBottom();
+            }
+          } catch {
+          }
+        }
+      }
+      if (!assistantText) throw new Error("empty response");
+      const diag = Object.keys(metaAccum).length ? { ...metaAccum, docIds: chunks.map((c) => {
+        var _a2, _b2;
+        return (_b2 = (_a2 = c.item) == null ? void 0 : _a2.metadata) == null ? void 0 : _b2.entity_id;
+      }).filter(Boolean) } : void 0;
+      const detected = metaAccum.detectedLanguage;
+      if ((detected == null ? void 0 : detected.code) && CHAT_STRINGS[detected.code] && detected.code !== detectedLangCode) {
+        setDetectedLangCode(detected.code);
+      }
+      const withAssistant = [...nextMessages, { role: "assistant", content: assistantText, chunks, diag }];
+      setMessages(withAssistant);
+      saveMessages(persistKey, withAssistant);
+      if (chatLoggingEnabled && !loggingOptedOut) {
+        logChatTurn(chatLogEndpoint, sessionIdRef.current, effectiveLanguageName, withAssistant, fullSystemPrompt, chatProxySettings);
+      }
+      onSearchChunks == null ? void 0 : onSearchChunks(chunks);
+    } catch (err) {
+      setError(strings.error);
+    } finally {
+      setStreaming("");
+      setStatusText("");
+      setPending(false);
+      scrollToBottom();
+    }
+  }, [pending, messages, aiSearchId, languageName, persistKey, strings.error, scrollToBottom, intake, chatLoggingEnabled, chatLogEndpoint, systemPrompt, loggingOptedOut, retrievalOverrides, onSearchChunks, chatProxyEndpoint, chatProxySettings]);
+  const handleFormSubmit = useCallback((e) => {
+    e.preventDefault();
+    const extra = pendingExtraPromptRef.current;
+    pendingExtraPromptRef.current = "";
+    sendQuery(input, extra);
+  }, [input, sendQuery]);
+  const handleStarterPick = useCallback((starter) => {
+    var _a;
+    setPreviewQuestion("");
+    if (autoSendStarters) {
+      sendQuery(starter.question, starter.extraPrompt);
+    } else {
+      setInput(starter.question);
+      pendingExtraPromptRef.current = starter.extraPrompt || "";
+      (_a = inputRef.current) == null ? void 0 : _a.focus();
+    }
+  }, [autoSendStarters, sendQuery]);
+  useImperativeHandle(ref, () => ({
+    resendLastQuery: () => {
+      const lastUser = [...messages].reverse().find((m) => m.role === "user");
+      if (lastUser) sendQuery(lastUser.content);
+    }
+  }), [messages, sendQuery]);
+  if (!aiSearchId) return null;
+  const panel = /* @__PURE__ */ jsxs2("div", { className: "sui-chat-panel", children: [
+    /* @__PURE__ */ jsxs2("div", { className: "sui-chat-header", children: [
+      /* @__PURE__ */ jsx2(Bot, { className: "sui-chat-icon" }),
+      /* @__PURE__ */ jsx2("span", { className: "sui-chat-header-title", children: strings.title }),
+      /* @__PURE__ */ jsxs2("div", { className: "sui-chat-header-actions", children: [
+        /* @__PURE__ */ jsx2(
+          "button",
+          {
+            type: "button",
+            className: "sui-chat-clear-btn",
+            onClick: clearChat,
+            "aria-label": strings.clearChat,
+            title: strings.clearChat,
+            children: /* @__PURE__ */ jsx2(Trash2, { className: "sui-chat-icon-sm" })
+          }
+        ),
+        isBubble && /* @__PURE__ */ jsx2(
+          "button",
+          {
+            type: "button",
+            className: "sui-chat-close-btn",
+            onClick: () => setOpen(false),
+            "aria-label": strings.closeChat,
+            children: /* @__PURE__ */ jsx2(X, { className: "sui-chat-icon-sm" })
+          }
+        )
+      ] })
+    ] }),
+    /* @__PURE__ */ jsx2(
+      IntakeForm,
+      {
+        intake,
+        onChange: setIntake,
+        askName,
+        askAge,
+        askGender,
+        strings,
+        open: intakeOpen,
+        onToggle: () => setIntakeOpen((v) => !v)
+      }
+    ),
+    /* @__PURE__ */ jsxs2("div", { className: "sui-chat-log", role: "log", "aria-relevant": "additions", ref: logRef, children: [
+      messages.length === 0 && !streaming && /* @__PURE__ */ jsxs2(Fragment, { children: [
+        visibleStarters.length > 0 && /* @__PURE__ */ jsx2("p", { className: "sui-chat-log-hint", children: strings.startHint }),
+        /* @__PURE__ */ jsx2(StarterButtons, { starters: visibleStarters, onPick: handleStarterPick, onPreview: setPreviewQuestion })
+      ] }),
+      messages.map((m, i) => /* @__PURE__ */ jsx2(Message, { ...m, strings, moreInfoHrefPattern }, i)),
+      streaming && /* @__PURE__ */ jsx2(Message, { role: "assistant", content: streaming, streaming: true, strings, moreInfoHrefPattern })
+    ] }),
+    /* @__PURE__ */ jsx2("div", { className: "sui-chat-status", role: "status", "aria-live": "polite", children: pending && !error ? formatStatus(statusText, strings) || strings.thinking : "" }),
+    error && /* @__PURE__ */ jsxs2("p", { className: "sui-chat-error", children: [
+      /* @__PURE__ */ jsx2(AlertCircle, { className: "sui-chat-icon-sm" }),
+      " ",
+      error
+    ] }),
+    /* @__PURE__ */ jsxs2("form", { className: "sui-chat-form", onSubmit: handleFormSubmit, children: [
+      /* @__PURE__ */ jsx2("label", { className: "sui-chat-sr-only", htmlFor: inputId, children: strings.inputLabel }),
+      /* @__PURE__ */ jsxs2("div", { className: "sui-chat-input-wrap", children: [
+        /* @__PURE__ */ jsx2(
+          "input",
+          {
+            ref: inputRef,
+            id: inputId,
+            type: "text",
+            className: "sui-chat-input",
+            placeholder: previewQuestion || placeholder || strings.inputLabel,
+            value: input,
+            onChange: (e) => {
+              setInput(e.target.value);
+              pendingExtraPromptRef.current = "";
+            },
+            disabled: pending,
+            autoComplete: "off"
+          }
+        ),
+        input && /* @__PURE__ */ jsx2(
+          "button",
+          {
+            type: "button",
+            className: "sui-chat-clear-input-btn",
+            onClick: () => {
+              var _a;
+              setInput("");
+              pendingExtraPromptRef.current = "";
+              (_a = inputRef.current) == null ? void 0 : _a.focus();
+            },
+            "aria-label": strings.clearInput,
+            title: strings.clearInput,
+            children: /* @__PURE__ */ jsx2(X, { className: "sui-chat-icon-sm" })
+          }
+        )
+      ] }),
+      /* @__PURE__ */ jsx2("button", { type: "submit", className: "sui-chat-send-btn", disabled: pending || !input.trim(), "aria-label": strings.send, children: pending ? /* @__PURE__ */ jsx2(Loader2, { className: "sui-chat-icon sui-chat-spin" }) : /* @__PURE__ */ jsx2(Send, { className: "sui-chat-icon" }) })
+    ] }),
+    /* @__PURE__ */ jsxs2("p", { className: "sui-chat-disclaimer", children: [
+      strings.disclaimer,
+      chatLoggingEnabled && (loggingOptedOut ? /* @__PURE__ */ jsxs2("span", { className: "sui-chat-logging-note", children: [
+        " ",
+        strings.loggingOptedOutNotice
+      ] }) : /* @__PURE__ */ jsxs2("span", { className: "sui-chat-logging-note", children: [
+        " ",
+        strings.loggingNotice,
+        " ",
+        /* @__PURE__ */ jsx2("button", { type: "button", className: "sui-chat-logging-optout-link", onClick: () => setOptOutModalOpen(true), children: strings.loggingOptOutLink })
+      ] }))
+    ] }),
+    optOutModalOpen && /* @__PURE__ */ jsx2(
+      LoggingOptOutModal,
+      {
+        strings,
+        titleId: optOutTitleId,
+        onConfirm: confirmLoggingOptOut,
+        onCancel: () => setOptOutModalOpen(false)
+      }
+    )
+  ] });
+  if (!isBubble) {
+    return /* @__PURE__ */ jsx2("section", { className: "sui-chat-widget sui-chat-widget--chat-page", dir, children: panel });
+  }
+  return /* @__PURE__ */ jsx2("section", { className: "sui-chat-widget sui-chat-widget--chat-bubble", dir, children: open ? panel : /* @__PURE__ */ jsx2(
+    "button",
+    {
+      ref: toggleRef,
+      type: "button",
+      className: "sui-chat-bubble-toggle",
+      "aria-expanded": open,
+      "aria-label": strings.openChat,
+      onClick: () => setOpen(true),
+      children: /* @__PURE__ */ jsx2(Bot, { className: "sui-chat-icon-lg" })
+    }
+  ) });
+});
+var ChatInterface_default = ChatInterface;
+
+// src/DynamicContentGrid.jsx
+import { useState as useState2 } from "react";
+import { Image as ImageIcon, User as UserIcon, Folder as FolderIcon } from "lucide-react";
+import { Fragment as Fragment2, jsx as jsx3, jsxs as jsxs3 } from "react/jsx-runtime";
+function trunc(s, n = 120) {
+  const str = String(s ?? "");
+  return str.length > n ? str.slice(0, n) + "\u2026" : str;
+}
+function fmtDate(v, locale = "nl-NL") {
+  try {
+    return new Date(v).toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" });
+  } catch {
+    return String(v);
+  }
+}
+function getByPath(item, path, lang, defaultLang) {
+  if (!item || !path) return "";
+  const parts = path.split(".");
+  let cur = item;
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (cur == null || typeof cur !== "object") return "";
+    cur = cur[parts[i]];
+  }
+  if (cur == null || typeof cur !== "object") return "";
+  const lastKey = parts[parts.length - 1];
+  if (lang && lang !== defaultLang) {
+    const translated = cur[`${lastKey}__i18n__${lang}`];
+    if (translated != null && translated !== "") return translated;
+  }
+  return cur[lastKey] ?? "";
+}
+function getUniqueValues(items, field, lang, defaultLang) {
+  const counts = {};
+  for (const item of items) {
+    const val = String(getByPath(item, field, lang, defaultLang) ?? "").trim();
+    if (val) counts[val] = (counts[val] ?? 0) + 1;
+  }
+  return Object.keys(counts).sort().map((v) => ({ value: v, count: counts[v] }));
+}
+function applyUserFilters(baseItems, activeFilters, searchTerm, filterBar, lang, defaultLang) {
+  var _a;
+  let result = baseItems;
+  if (searchTerm) {
+    const term = searchTerm.toLowerCase().trim();
+    const searchFields = ((_a = filterBar == null ? void 0 : filterBar.searchFields) == null ? void 0 : _a.length) ? filterBar.searchFields : ["name", "title", "description"];
+    result = result.filter((item) => searchFields.some((f) => String(getByPath(item, f, lang, defaultLang) ?? "").toLowerCase().includes(term)));
+  }
+  for (const [field, values] of Object.entries(activeFilters)) {
+    if (!(values == null ? void 0 : values.length)) continue;
+    const valSet = new Set(values.map((v) => String(v).toLowerCase()));
+    result = result.filter((item) => valSet.has(String(getByPath(item, field, lang, defaultLang) ?? "").toLowerCase()));
+  }
+  return result;
+}
+function Badge({ value }) {
+  return value ? /* @__PURE__ */ jsx3("span", { className: "sui-dyn-badge", children: value }) : null;
+}
+function CardImage({ src }) {
+  if (src) return /* @__PURE__ */ jsx3("img", { src, alt: "", loading: "lazy" });
+  return /* @__PURE__ */ jsx3("div", { className: "sui-dyn-img-placeholder", children: /* @__PURE__ */ jsx3(ImageIcon, { className: "sui-dyn-icon" }) });
+}
+function defaultDetailUrl(item, fieldMap, collection, lang, defaultLang) {
+  const pattern = (fieldMap == null ? void 0 : fieldMap.detailUrl) ?? "";
+  if (pattern) {
+    return pattern.replace(/\{\{id\}\}/g, String(item.id ?? "")).replace(/\{\{slug\}\}/g, String(item.slug ?? item.id ?? ""));
+  }
+  const idOrSlug = item.slug ?? item.id;
+  if (!collection || !idOrSlug) return "";
+  return lang && lang !== defaultLang ? `/${lang}/${collection}/${idOrSlug}` : `/${collection}/${idOrSlug}`;
+}
+function buildMoreInfoUrl(item, fieldMap) {
+  const pattern = (fieldMap == null ? void 0 : fieldMap.moreInfoUrl) ?? "";
+  if (!pattern) return "";
+  return pattern.replace(/\{\{id\}\}/g, String(item.id ?? "")).replace(/\{\{slug\}\}/g, String(item.slug ?? item.id ?? ""));
+}
+function PreviewCard({ item, design, fieldMap, collection, detailUrlBuilder, dateLocale, strings, lang, defaultLang }) {
+  const g = (slot) => {
+    const field = fieldMap[slot];
+    return field ? getByPath(item, field, lang, defaultLang) : "";
+  };
+  switch (design) {
+    case "image-card":
+      return /* @__PURE__ */ jsxs3(Fragment2, { children: [
+        /* @__PURE__ */ jsx3("div", { className: "sui-dyn-img", children: /* @__PURE__ */ jsx3(CardImage, { src: g("image") }) }),
+        /* @__PURE__ */ jsxs3("div", { className: "sui-dyn-body", children: [
+          /* @__PURE__ */ jsx3(Badge, { value: g("badge") }),
+          /* @__PURE__ */ jsx3("h3", { children: g("heading") || item.name || item.title || "\u2014" }),
+          g("subheading") && /* @__PURE__ */ jsx3("p", { className: "sui-dyn-sub", children: String(g("subheading")) }),
+          g("body") && /* @__PURE__ */ jsx3("p", { className: "sui-dyn-desc", children: trunc(g("body")) })
+        ] })
+      ] });
+    case "compact-card":
+      return /* @__PURE__ */ jsxs3("div", { className: "sui-dyn-body sui-dyn-body-full", children: [
+        /* @__PURE__ */ jsx3("h3", { children: g("heading") || item.name || item.title || "\u2014" }),
+        g("subheading") && /* @__PURE__ */ jsx3("p", { className: "sui-dyn-sub", children: String(g("subheading")) }),
+        g("body") && /* @__PURE__ */ jsx3("p", { className: "sui-dyn-desc", children: trunc(g("body"), 100) }),
+        g("date") && /* @__PURE__ */ jsx3("p", { className: "sui-dyn-date", children: fmtDate(g("date"), dateLocale) })
+      ] });
+    case "stat-card":
+      return /* @__PURE__ */ jsxs3("div", { className: "sui-dyn-body sui-dyn-stat-body", children: [
+        /* @__PURE__ */ jsx3("p", { className: "sui-dyn-stat-label", children: g("heading") || item.name || "\u2014" }),
+        /* @__PURE__ */ jsx3("p", { className: "sui-dyn-stat-value", children: String(g("number") || "\u2014") }),
+        g("subheading") && /* @__PURE__ */ jsx3("p", { className: "sui-dyn-sub", children: String(g("subheading")) }),
+        /* @__PURE__ */ jsx3(Badge, { value: g("badge") })
+      ] });
+    case "person-card":
+      return /* @__PURE__ */ jsxs3(Fragment2, { children: [
+        /* @__PURE__ */ jsx3("div", { className: "sui-dyn-avatar-wrap", children: g("image") ? /* @__PURE__ */ jsx3("img", { src: String(g("image")), className: "sui-dyn-avatar", alt: "" }) : /* @__PURE__ */ jsx3("div", { className: "sui-dyn-avatar-placeholder", children: /* @__PURE__ */ jsx3(UserIcon, { className: "sui-dyn-icon" }) }) }),
+        /* @__PURE__ */ jsxs3("div", { className: "sui-dyn-body sui-dyn-person-body", children: [
+          /* @__PURE__ */ jsx3("h3", { children: g("heading") || item.name || "\u2014" }),
+          g("subheading") && /* @__PURE__ */ jsx3("p", { className: "sui-dyn-sub", children: String(g("subheading")) }),
+          g("body") && /* @__PURE__ */ jsx3("p", { className: "sui-dyn-desc", children: trunc(g("body"), 100) })
+        ] })
+      ] });
+    case "contact-card":
+      return /* @__PURE__ */ jsxs3("div", { className: "sui-dyn-body sui-dyn-body-full", children: [
+        /* @__PURE__ */ jsx3("h3", { children: g("heading") || item.name || item.title || "\u2014" }),
+        /* @__PURE__ */ jsx3(
+          ActionButtons,
+          {
+            tel: g("tel"),
+            email: g("email"),
+            url: g("website"),
+            address: g("address"),
+            moreInfoHref: buildMoreInfoUrl(item, fieldMap),
+            strings
+          }
+        )
+      ] });
+    case "document-card":
+      return /* @__PURE__ */ jsxs3(Fragment2, { children: [
+        /* @__PURE__ */ jsx3("div", { className: "sui-dyn-doc-icon", children: /* @__PURE__ */ jsx3(FolderIcon, { className: "sui-dyn-icon" }) }),
+        /* @__PURE__ */ jsxs3("div", { className: "sui-dyn-body sui-dyn-body-full", children: [
+          /* @__PURE__ */ jsx3("h3", { children: g("heading") || item.name || item.title || "\u2014" }),
+          /* @__PURE__ */ jsxs3("div", { className: "sui-dyn-doc-meta", children: [
+            /* @__PURE__ */ jsx3(Badge, { value: g("badge") }),
+            g("date") && /* @__PURE__ */ jsx3("span", { className: "sui-dyn-date", children: fmtDate(g("date"), dateLocale) })
+          ] }),
+          g("body") && /* @__PURE__ */ jsx3("p", { className: "sui-dyn-desc", children: trunc(g("body"), 100) })
+        ] })
+      ] });
+    default:
+      return /* @__PURE__ */ jsx3("div", { className: "sui-dyn-body sui-dyn-body-full", children: /* @__PURE__ */ jsx3("h3", { children: item.name ?? item.title ?? String(item.id ?? "\u2014") }) });
+  }
+}
+function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFilters, setSearchTerm, strings, lang, defaultLang }) {
+  const fb = filterBar ?? {};
+  const hasSearch = fb.searchEnabled;
+  const sortedFilters = (fb.filters ?? []).filter((f) => f.field).slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  if (!hasSearch && sortedFilters.length === 0) return null;
+  return /* @__PURE__ */ jsxs3("div", { className: `sui-dyn-filterbar sui-dyn-filterbar--${fb.layout ?? "horizontal"}`, children: [
+    hasSearch && /* @__PURE__ */ jsx3("div", { className: "sui-dyn-filter-group", children: /* @__PURE__ */ jsx3(
+      "input",
+      {
+        type: "search",
+        className: "sui-dyn-search-input",
+        value: searchTerm,
+        placeholder: (fb.searchLabel || strings.search) + "\u2026",
+        onChange: (e) => setSearchTerm(e.target.value)
+      }
+    ) }),
+    sortedFilters.map((filterDef) => {
+      const options = getUniqueValues(allItems, filterDef.field, lang, defaultLang);
+      if (options.length <= 1) return null;
+      const selected = activeFilters[filterDef.field] ?? [];
+      const label = filterDef.label || filterDef.field;
+      return /* @__PURE__ */ jsxs3("div", { className: "sui-dyn-filter-group", children: [
+        /* @__PURE__ */ jsx3("span", { className: "sui-dyn-filter-label", children: label }),
+        filterDef.type === "select" ? /* @__PURE__ */ jsxs3(
+          "select",
+          {
+            className: "sui-dyn-filter-select",
+            value: selected[0] ?? "",
+            onChange: (e) => setActiveFilters((prev) => ({ ...prev, [filterDef.field]: e.target.value ? [e.target.value] : [] })),
+            children: [
+              /* @__PURE__ */ jsx3("option", { value: "", children: strings.all }),
+              options.map((o) => /* @__PURE__ */ jsxs3("option", { value: o.value, children: [
+                o.value,
+                filterDef.showCount ? ` (${o.count})` : ""
+              ] }, o.value))
+            ]
+          }
+        ) : /* @__PURE__ */ jsx3("div", { className: `sui-dyn-filter-options sui-dyn-filter-options--${filterDef.type ?? "checkbox"}`, children: options.map((o) => /* @__PURE__ */ jsxs3("label", { className: "sui-dyn-filter-option", children: [
+          /* @__PURE__ */ jsx3(
+            "input",
+            {
+              type: filterDef.type === "radio" ? "radio" : "checkbox",
+              name: `sui-dyn-filter-${filterDef.id}`,
+              value: o.value,
+              checked: filterDef.type === "radio" ? selected[0] === o.value : selected.includes(o.value),
+              onChange: (e) => {
+                if (filterDef.type === "radio") {
+                  setActiveFilters((prev) => ({ ...prev, [filterDef.field]: e.target.checked ? [o.value] : [] }));
+                } else {
+                  setActiveFilters((prev) => {
+                    const cur = prev[filterDef.field] ?? [];
+                    return { ...prev, [filterDef.field]: e.target.checked ? [...cur, o.value] : cur.filter((v) => v !== o.value) };
+                  });
+                }
+              }
+            }
+          ),
+          " ",
+          o.value,
+          filterDef.showCount ? ` (${o.count})` : ""
+        ] }, o.value)) })
+      ] }, filterDef.id);
+    })
+  ] });
+}
+var DEFAULT_STRINGS2 = {
+  noResults: "No results found.",
+  all: "All",
+  clearFilters: "\xD7 Clear filters",
+  search: "Search",
+  call: "Call",
+  email: "Email",
+  website: "Website",
+  route: "Directions",
+  moreInfo: "More info"
+};
+function DynamicContentGrid({
+  items = [],
+  loading = false,
+  error = null,
+  cardDesign = "image-card",
+  fieldMap = {},
+  cols = 3,
+  filterBar: filterBarConfig = {},
+  title,
+  collection,
+  detailUrlBuilder,
+  strings: stringsProp,
+  dateLocale = "nl-NL",
+  lang,
+  defaultLang
+}) {
+  const strings = { ...DEFAULT_STRINGS2, ...stringsProp };
+  const [activeFilters, setActiveFilters] = useState2({});
+  const [searchTerm, setSearchTerm] = useState2("");
+  const displayItems = applyUserFilters(items, activeFilters, searchTerm, filterBarConfig, lang, defaultLang);
+  const hasFilterBar = filterBarConfig.enabled && (filterBarConfig.searchEnabled || (filterBarConfig.filters ?? []).some((f) => f.field));
+  const pos = filterBarConfig.position ?? "top";
+  const hasActive = searchTerm.length > 0 || Object.values(activeFilters).some((v) => v.length > 0);
+  const buildHref = (item) => detailUrlBuilder ? detailUrlBuilder(item) : defaultDetailUrl(item, fieldMap, collection, lang, defaultLang);
+  const gridContent = /* @__PURE__ */ jsxs3(Fragment2, { children: [
+    loading && /* @__PURE__ */ jsx3("div", { className: "sui-dyn-grid", style: { "--sui-dyn-cols": Math.min(cols, 4) }, children: Array.from({ length: Math.min(cols * 2, 6) }).map((_, i) => /* @__PURE__ */ jsx3("div", { className: "sui-dyn-skeleton" }, i)) }),
+    !loading && error && /* @__PURE__ */ jsxs3("p", { className: "sui-dyn-error", children: [
+      "\u26A0 ",
+      error
+    ] }),
+    !loading && !error && displayItems.length === 0 && /* @__PURE__ */ jsx3("p", { className: "sui-dyn-no-items", children: strings.noResults }),
+    !loading && !error && displayItems.length > 0 && /* @__PURE__ */ jsx3("div", { className: "sui-dyn-grid", style: { "--sui-dyn-cols": Math.min(cols, 4) }, children: displayItems.map((item) => {
+      const href = cardDesign === "contact-card" ? "" : buildHref(item);
+      const Wrap = href ? "a" : "article";
+      return /* @__PURE__ */ jsx3(Wrap, { className: `sui-dyn-card sui-dyn-card-${cardDesign}`, ...href ? { href } : {}, children: /* @__PURE__ */ jsx3(PreviewCard, { item, design: cardDesign, fieldMap, collection, detailUrlBuilder, dateLocale, strings, lang, defaultLang }) }, item.id ?? item.name);
+    }) })
+  ] });
+  return /* @__PURE__ */ jsxs3("section", { className: "sui-dyn-wrap", children: [
+    title && /* @__PURE__ */ jsx3("h2", { className: "sui-dyn-title", children: title }),
+    hasFilterBar ? /* @__PURE__ */ jsxs3("div", { className: `sui-dyn-layout sui-dyn-layout--${pos}`, children: [
+      pos === "right" || pos === "bottom" ? /* @__PURE__ */ jsxs3(Fragment2, { children: [
+        /* @__PURE__ */ jsx3("div", { className: "sui-dyn-grid-wrap", children: gridContent }),
+        /* @__PURE__ */ jsx3(
+          FilterBar,
+          {
+            allItems: items,
+            filterBar: filterBarConfig,
+            activeFilters,
+            searchTerm,
+            setActiveFilters,
+            setSearchTerm,
+            strings,
+            lang,
+            defaultLang
+          }
+        )
+      ] }) : /* @__PURE__ */ jsxs3(Fragment2, { children: [
+        /* @__PURE__ */ jsx3(
+          FilterBar,
+          {
+            allItems: items,
+            filterBar: filterBarConfig,
+            activeFilters,
+            searchTerm,
+            setActiveFilters,
+            setSearchTerm,
+            strings,
+            lang,
+            defaultLang
+          }
+        ),
+        /* @__PURE__ */ jsx3("div", { className: "sui-dyn-grid-wrap", children: gridContent })
+      ] }),
+      hasActive && /* @__PURE__ */ jsx3("button", { type: "button", className: "sui-dyn-reset-btn", onClick: () => {
+        setActiveFilters({});
+        setSearchTerm("");
+      }, children: strings.clearFilters })
+    ] }) : gridContent
+  ] });
+}
 
 // src/version.js
 var SHARED_UI_VERSION = "0.6.1";

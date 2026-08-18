@@ -3,6 +3,7 @@ import { Bot, Send, Loader2, AlertCircle, X, Trash2, MessageCircle } from 'lucid
 import DOMPurify from 'dompurify';
 import ActionButtons, { sanitizeUrl } from './ActionButtons.jsx';
 import { STARTER_ICONS } from './starterIcons.js';
+import { CHAT_STRINGS } from './chatStrings.js';
 
 // ChatInterface — shared, presentational chat UI talking directly to a Cloudflare AI
 // Search instance's public endpoint. Used by both:
@@ -262,13 +263,20 @@ function buildMoreInfoHref(pattern, entityId) {
     return pattern.replace('{id}', encodeURIComponent(entityId));
 }
 
+function parseSourceContext(meta) {
+    try { return JSON.parse(meta.context || '{}'); } catch { return {}; }
+}
+
+function getSourceName(meta) {
+    return meta.name || parseSourceContext(meta).naam || '';
+}
+
 function SourceCard({ meta, strings, moreInfoHrefPattern }) {
-    let ctx = {};
-    try { ctx = JSON.parse(meta.context || '{}'); } catch { /* ignore */ }
+    const ctx = parseSourceContext(meta);
     const infoHref = buildMoreInfoHref(moreInfoHrefPattern, meta.entity_id);
     return (
         <div className="sui-chat-source-card">
-            <div className="sui-chat-source-title">{meta.name || ctx.naam || ''}</div>
+            <div className="sui-chat-source-title">{getSourceName(meta)}</div>
             {ctx.adres && <div className="sui-chat-source-address">{ctx.adres}</div>}
             <ActionButtons tel={ctx.tel} email={ctx.email} url={ctx.url} address={ctx.adres} moreInfoHref={infoHref} strings={strings} />
         </div>
@@ -301,7 +309,13 @@ function buildSystemMessage(languageName, intake, systemPrompt, extraPrompt) {
         + `and easy to read for someone who may be in a stressful situation.`
         + `${buildIntakeContext(intake)}`
         + `${systemPrompt?.trim() ? ` ${systemPrompt.trim()}` : ''}`
-        + `${extraPrompt ? ` ${extraPrompt}` : ''}`;
+        + `${extraPrompt ? ` ${extraPrompt}` : ''}`
+        // Reasserted at the very end, not just the top — systemPrompt above is
+        // CMS-authored content (persona/instructions/guardrails), routinely a few
+        // hundred words of Dutch, which otherwise dominates a weaker model's
+        // language choice purely by being the text closest to generation.
+        + ` Reminder: always reply in the same language as the person's own messages, `
+        + `regardless of what language the instructions above are written in.`;
 }
 
 // Optional pre-chat context (name/age/gender) — every field independently opt-in via
@@ -410,8 +424,26 @@ function isClarifyingQuestion(content) {
     return content.trim().endsWith('?');
 }
 
+// Once the bot gives a final (non-clarifying) answer, `chunks` is still every
+// document retrieved this turn — up to 4 after dedupeSources — not just the one(s)
+// the answer actually settled on. Narrow to organizations the response text actually
+// names, same "match on what's visibly there" heuristic as isClarifyingQuestion above,
+// rather than needing the model to emit a separate machine-readable citation list.
+// Falls back to the full deduped set when nothing matches (paraphrased name, name
+// missing from metadata, etc.) so a matching miss never means "no cards at all".
+function filterMentionedSources(content, sources) {
+    const lower = content.toLowerCase();
+    const mentioned = sources.filter(s => {
+        const name = getSourceName(s.meta).trim();
+        return name && lower.includes(name.toLowerCase());
+    });
+    return mentioned.length ? mentioned : sources;
+}
+
 function Message({ role, content, chunks, streaming, strings, moreInfoHrefPattern }) {
-    const sources = (role === 'assistant' && !isClarifyingQuestion(content)) ? dedupeSources(chunks) : [];
+    const sources = (role === 'assistant' && !isClarifyingQuestion(content))
+        ? filterMentionedSources(content, dedupeSources(chunks))
+        : [];
     return (
         <div className={`sui-chat-msg sui-chat-msg--${role}`}>
             <span className="sui-chat-msg-label">{role === 'user' ? strings.you : strings.assistant}</span>
@@ -484,11 +516,24 @@ const ChatInterface = forwardRef(function ChatInterface({
     chatProxyEndpoint = null,
     chatProxySettings = null,
 }, ref) {
+    // Set once the chat proxy's `meta` SSE event (see route.js) reports a confident,
+    // supported detected language for the conversation — see the `meta` handling
+    // below. Only ever populated on the proxy path (the direct-to-Cloudflare path has
+    // no server-side detection to report); null means "use the caller's own
+    // strings/languageName props", matching the pre-detection behavior.
+    const [detectedLangCode, setDetectedLangCode] = useState(null);
+    const autoStrings = detectedLangCode ? CHAT_STRINGS[detectedLangCode] : null;
     // botName overrides just the one strings.assistant key (the speaker label shown
     // next to each of the bot's messages) rather than requiring the consuming app to
     // clone/override the whole per-language strings table for one field — see
     // buildSystemMessage's sibling pattern (systemPrompt) for the same reasoning.
-    const strings = { ...DEFAULT_STRINGS, ...stringsProp, ...(botName?.trim() ? { assistant: botName.trim() } : {}) };
+    // autoStrings, when set, replaces the whole caller-supplied stringsProp (not just
+    // merged on top of it) so the widget fully switches to the detected language's UI
+    // copy rather than mixing two languages' chrome.
+    const strings = { ...DEFAULT_STRINGS, ...(autoStrings ?? stringsProp), ...(botName?.trim() ? { assistant: botName.trim() } : {}) };
+    // Mirrors strings' auto-switch — buildSystemMessage/logChatTurn should agree with
+    // whatever language the UI itself just switched to.
+    const effectiveLanguageName = autoStrings?.languageName ?? languageName;
     const isBubble = variant === 'chat-bubble';
     // `active` defaults to on for any starter saved before this field existed. Computed
     // once here since both the hint text above the starters and the starters themselves
@@ -590,7 +635,7 @@ const ChatInterface = forwardRef(function ChatInterface({
         setStreaming(' ');
         scrollToBottom();
 
-        const fullSystemPrompt = buildSystemMessage(languageName, intake, systemPrompt, extraPrompt);
+        const fullSystemPrompt = buildSystemMessage(effectiveLanguageName, intake, systemPrompt, extraPrompt);
 
         // chatProxyEndpoint (optional): routes through a server-side proxy instead of
         // Cloudflare's public endpoint directly — see admin_client's
@@ -687,11 +732,20 @@ const ChatInterface = forwardRef(function ChatInterface({
             const diag = Object.keys(metaAccum).length
                 ? { ...metaAccum, docIds: chunks.map(c => c.item?.metadata?.entity_id).filter(Boolean) }
                 : undefined;
+            // Auto-switch the widget's own UI language (not just the model's reply) once
+            // route.js reports a confident, supported detection — see the `meta` handling
+            // above and detectedLangCode's declaration. Only fires on a real change, so a
+            // steady conversation in one language never re-renders strings/languageName
+            // needlessly.
+            const detected = metaAccum.detectedLanguage;
+            if (detected?.code && CHAT_STRINGS[detected.code] && detected.code !== detectedLangCode) {
+                setDetectedLangCode(detected.code);
+            }
             const withAssistant = [...nextMessages, { role: 'assistant', content: assistantText, chunks, diag }];
             setMessages(withAssistant);
             saveMessages(persistKey, withAssistant);
             if (chatLoggingEnabled && !loggingOptedOut) {
-                logChatTurn(chatLogEndpoint, sessionIdRef.current, languageName, withAssistant, fullSystemPrompt, chatProxySettings);
+                logChatTurn(chatLogEndpoint, sessionIdRef.current, effectiveLanguageName, withAssistant, fullSystemPrompt, chatProxySettings);
             }
             onSearchChunks?.(chunks);
         } catch (err) {

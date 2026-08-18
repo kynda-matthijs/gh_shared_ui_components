@@ -18,37 +18,52 @@ function fmtDate(v, locale = 'nl-NL') {
     catch { return String(v); }
 }
 
-/** Dot-notation path accessor — supports e.g. "subregion.name" */
-function getByPath(item, path) {
+/**
+ * Dot-notation path accessor — supports e.g. "subregion.name" — preferring the
+ * `${lastKey}__i18n__${lang}` variant of the final segment when present, same
+ * convention/semantics as mini_site's PageBlocks.astro local getByPath (the "fixed
+ * blocks" path that already translates correctly) and lib/i18n.ts's `t()`. Items here
+ * come straight from the public API (api_server/public_router.js), which never
+ * resolves __i18n__ server-side — every language variant is a separate raw top-level
+ * key the caller has to pick between, exactly what this does for the current `lang`.
+ */
+function getByPath(item, path, lang, defaultLang) {
     if (!item || !path) return '';
+    const parts = path.split('.');
     let cur = item;
-    for (const p of path.split('.')) {
+    for (let i = 0; i < parts.length - 1; i++) {
         if (cur == null || typeof cur !== 'object') return '';
-        cur = cur[p];
+        cur = cur[parts[i]];
     }
-    return cur ?? '';
+    if (cur == null || typeof cur !== 'object') return '';
+    const lastKey = parts[parts.length - 1];
+    if (lang && lang !== defaultLang) {
+        const translated = cur[`${lastKey}__i18n__${lang}`];
+        if (translated != null && translated !== '') return translated;
+    }
+    return cur[lastKey] ?? '';
 }
 
-function getUniqueValues(items, field) {
+function getUniqueValues(items, field, lang, defaultLang) {
     const counts = {};
     for (const item of items) {
-        const val = String(getByPath(item, field) ?? '').trim();
+        const val = String(getByPath(item, field, lang, defaultLang) ?? '').trim();
         if (val) counts[val] = (counts[val] ?? 0) + 1;
     }
     return Object.keys(counts).sort().map(v => ({ value: v, count: counts[v] }));
 }
 
-function applyUserFilters(baseItems, activeFilters, searchTerm, filterBar) {
+function applyUserFilters(baseItems, activeFilters, searchTerm, filterBar, lang, defaultLang) {
     let result = baseItems;
     if (searchTerm) {
         const term = searchTerm.toLowerCase().trim();
         const searchFields = filterBar?.searchFields?.length ? filterBar.searchFields : ['name', 'title', 'description'];
-        result = result.filter(item => searchFields.some(f => String(getByPath(item, f) ?? '').toLowerCase().includes(term)));
+        result = result.filter(item => searchFields.some(f => String(getByPath(item, f, lang, defaultLang) ?? '').toLowerCase().includes(term)));
     }
     for (const [field, values] of Object.entries(activeFilters)) {
         if (!values?.length) continue;
         const valSet = new Set(values.map(v => String(v).toLowerCase()));
-        result = result.filter(item => valSet.has(String(getByPath(item, field) ?? '').toLowerCase()));
+        result = result.filter(item => valSet.has(String(getByPath(item, field, lang, defaultLang) ?? '').toLowerCase()));
     }
     return result;
 }
@@ -62,7 +77,7 @@ function CardImage({ src }) {
     return <div className="sui-dyn-img-placeholder"><ImageIcon className="sui-dyn-icon" /></div>;
 }
 
-function defaultDetailUrl(item, fieldMap, collection) {
+function defaultDetailUrl(item, fieldMap, collection, lang, defaultLang) {
     const pattern = fieldMap?.detailUrl ?? '';
     if (pattern) {
         return pattern
@@ -70,7 +85,11 @@ function defaultDetailUrl(item, fieldMap, collection) {
             .replace(/\{\{slug\}\}/g, String(item.slug ?? item.id ?? ''));
     }
     const idOrSlug = item.slug ?? item.id;
-    return collection && idOrSlug ? `/${collection}/${idOrSlug}` : '';
+    if (!collection || !idOrSlug) return '';
+    // Matches mini_site's detail-page routing: unprefixed for defaultLang, /<lang>/...
+    // for every other supportedLanguage — see [resource]/[id].astro and its sibling
+    // [lang]/[resource]/[id].astro / buildDetailAltSlugs (lib/detailPages.ts).
+    return lang && lang !== defaultLang ? `/${lang}/${collection}/${idOrSlug}` : `/${collection}/${idOrSlug}`;
 }
 
 // moreInfoUrl is a freeText pattern slot (like detailUrl above), not a field-name slot —
@@ -83,10 +102,10 @@ function buildMoreInfoUrl(item, fieldMap) {
         .replace(/\{\{slug\}\}/g, String(item.slug ?? item.id ?? ''));
 }
 
-function PreviewCard({ item, design, fieldMap, collection, detailUrlBuilder, dateLocale, strings }) {
+function PreviewCard({ item, design, fieldMap, collection, detailUrlBuilder, dateLocale, strings, lang, defaultLang }) {
     const g = (slot) => {
         const field = fieldMap[slot];
-        return field ? getByPath(item, field) : '';
+        return field ? getByPath(item, field, lang, defaultLang) : '';
     };
 
     switch (design) {
@@ -165,7 +184,7 @@ function PreviewCard({ item, design, fieldMap, collection, detailUrlBuilder, dat
     }
 }
 
-function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFilters, setSearchTerm, strings }) {
+function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFilters, setSearchTerm, strings, lang, defaultLang }) {
     const fb = filterBar ?? {};
     const hasSearch = fb.searchEnabled;
     const sortedFilters = (fb.filters ?? []).filter(f => f.field).slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -185,7 +204,7 @@ function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFi
                 </div>
             )}
             {sortedFilters.map(filterDef => {
-                const options = getUniqueValues(allItems, filterDef.field);
+                const options = getUniqueValues(allItems, filterDef.field, lang, defaultLang);
                 if (options.length <= 1) return null;
                 const selected = activeFilters[filterDef.field] ?? [];
                 const label = filterDef.label || filterDef.field;
@@ -250,17 +269,19 @@ export default function DynamicContentGrid({
     detailUrlBuilder,
     strings: stringsProp,
     dateLocale = 'nl-NL',
+    lang,
+    defaultLang,
 }) {
     const strings = { ...DEFAULT_STRINGS, ...stringsProp };
     const [activeFilters, setActiveFilters] = useState({});
     const [searchTerm, setSearchTerm] = useState('');
 
-    const displayItems = applyUserFilters(items, activeFilters, searchTerm, filterBarConfig);
+    const displayItems = applyUserFilters(items, activeFilters, searchTerm, filterBarConfig, lang, defaultLang);
     const hasFilterBar = filterBarConfig.enabled && (filterBarConfig.searchEnabled || (filterBarConfig.filters ?? []).some(f => f.field));
     const pos = filterBarConfig.position ?? 'top';
     const hasActive = searchTerm.length > 0 || Object.values(activeFilters).some(v => v.length > 0);
 
-    const buildHref = (item) => detailUrlBuilder ? detailUrlBuilder(item) : defaultDetailUrl(item, fieldMap, collection);
+    const buildHref = (item) => detailUrlBuilder ? detailUrlBuilder(item) : defaultDetailUrl(item, fieldMap, collection, lang, defaultLang);
 
     const gridContent = (
         <>
@@ -280,7 +301,7 @@ export default function DynamicContentGrid({
                         const Wrap = href ? 'a' : 'article';
                         return (
                             <Wrap key={item.id ?? item.name} className={`sui-dyn-card sui-dyn-card-${cardDesign}`} {...(href ? { href } : {})}>
-                                <PreviewCard item={item} design={cardDesign} fieldMap={fieldMap} collection={collection} detailUrlBuilder={detailUrlBuilder} dateLocale={dateLocale} strings={strings} />
+                                <PreviewCard item={item} design={cardDesign} fieldMap={fieldMap} collection={collection} detailUrlBuilder={detailUrlBuilder} dateLocale={dateLocale} strings={strings} lang={lang} defaultLang={defaultLang} />
                             </Wrap>
                         );
                     })}
@@ -299,12 +320,12 @@ export default function DynamicContentGrid({
                         <>
                             <div className="sui-dyn-grid-wrap">{gridContent}</div>
                             <FilterBar allItems={items} filterBar={filterBarConfig} activeFilters={activeFilters} searchTerm={searchTerm}
-                                setActiveFilters={setActiveFilters} setSearchTerm={setSearchTerm} strings={strings} />
+                                setActiveFilters={setActiveFilters} setSearchTerm={setSearchTerm} strings={strings} lang={lang} defaultLang={defaultLang} />
                         </>
                     ) : (
                         <>
                             <FilterBar allItems={items} filterBar={filterBarConfig} activeFilters={activeFilters} searchTerm={searchTerm}
-                                setActiveFilters={setActiveFilters} setSearchTerm={setSearchTerm} strings={strings} />
+                                setActiveFilters={setActiveFilters} setSearchTerm={setSearchTerm} strings={strings} lang={lang} defaultLang={defaultLang} />
                             <div className="sui-dyn-grid-wrap">{gridContent}</div>
                         </>
                     )}
