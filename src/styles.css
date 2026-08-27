@@ -1,0 +1,147 @@
+/* Reference styles for this package's sui-dyn-*/sui-action-*/sui-chat-icon class hooks —
+ * copied from mini_site's DynamicBlock.astro (the published-site look), which is the more
+ * complete of the two independently hand-maintained copies (the other is admin_client's
+ * BlockEditorPage.jsx, a deliberately more compact variant tuned for the smaller in-canvas
+ * editing view — the two aren't meant to be identical, so this file doesn't try to replace
+ * either). This file is NOT imported by admin_client or mini_site — it exists only so
+ * playground/ has a reasonable default look instead of unstyled divs; every rule uses the
+ * same var(--token, fallback) pattern as the original copies, so it renders sensibly here
+ * even with no design-token :root defined (the fallback values kick in).
+ *
+ * If this ever drifts from what's actually live on the published site, that's a real bug —
+ * diff it against mini_site/src/components/DynamicBlock.astro's <style> block.
+ */
+
+.sui-dyn-title { font-size: calc(1.5rem * var(--font-scale, 1)); font-weight: 700; margin-bottom: 1.5rem; line-height: 1.2; }
+.sui-dyn-icon { width: 32px; height: 32px; }
+.sui-dyn-grid {
+    display: grid;
+    grid-template-columns: repeat(var(--sui-dyn-cols, 3), 1fr);
+    gap: 1.5rem;
+    align-items: start;
+}
+@media (max-width: 768px) { .sui-dyn-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 480px) { .sui-dyn-grid { grid-template-columns: 1fr; } }
+
+.sui-dyn-card {
+    display: flex; flex-direction: column;
+    background: var(--surface-card, #fff); border: 1px solid var(--border, #e5e7eb); border-radius: var(--radius-md, 12px);
+    overflow: hidden; text-decoration: none; color: inherit;
+    box-shadow: var(--shadow-card, none);
+    transition: box-shadow 0.18s, transform 0.18s; height: 100%;
+}
+.sui-dyn-card:hover { box-shadow: 0 8px 28px rgba(0,0,0,0.10); transform: translateY(-2px); }
+
+.sui-dyn-img { width: 100%; aspect-ratio: 16/9; overflow: hidden; background: var(--surface-muted, #f3f4f6); flex-shrink: 0; }
+.sui-dyn-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.sui-dyn-img-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: var(--border-strong, #d1d5db); }
+
+.sui-dyn-body { padding: 1rem 1.1rem; flex: 1; display: flex; flex-direction: column; gap: 0.35rem; }
+.sui-dyn-body-full { padding: 0.85rem; }
+.sui-dyn-body h3 { font-size: calc(1rem * var(--font-scale, 1)); font-weight: 700; line-height: 1.3; color: var(--text, #111); margin: 0; }
+.sui-dyn-sub { font-size: calc(0.82rem * var(--font-scale, 1)); color: var(--text-muted, #6b7280); margin: 0; }
+.sui-dyn-desc { font-size: calc(0.82rem * var(--font-scale, 1)); color: var(--text-subtle, #9ca3af); line-height: 1.5; margin: 0; flex: 1;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.sui-dyn-date { font-size: calc(0.72rem * var(--font-scale, 1)); color: var(--text-subtle, #9ca3af); margin-top: auto; padding-top: 0.5rem; }
+.sui-dyn-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 99px;
+    font-size: calc(0.65rem * var(--font-scale, 1)); font-weight: 700; text-transform: uppercase;
+    background: var(--accent-bg, #eef2ff); color: var(--accent-text, #4338ca);
+    border: 1px solid color-mix(in srgb, var(--accent-text, #4338ca) 35%, transparent);
+    align-self: flex-start; margin-bottom: 0.15rem;
+}
+
+.sui-dyn-stat-body { align-items: center; text-align: center; justify-content: center; padding: 1.5rem 1rem; }
+.sui-dyn-stat-label { font-size: calc(0.82rem * var(--font-scale, 1)); color: var(--text-muted, #6b7280); margin: 0; }
+.sui-dyn-stat-value { font-size: calc(2rem * var(--font-scale, 1)); font-weight: 800; color: var(--accent, #4f46e5); line-height: 1.1; margin: 0.35rem 0; font-variant-numeric: tabular-nums; }
+
+.sui-dyn-avatar-wrap { display: flex; justify-content: center; padding: 1.25rem 1rem 0.5rem; }
+.sui-dyn-avatar { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; display: block; border: 3px solid var(--border, #e5e7eb); }
+.sui-dyn-avatar-placeholder { width: 72px; height: 72px; border-radius: 50%; background: var(--surface-muted, #f3f4f6); display: flex; align-items: center; justify-content: center; color: var(--border-strong, #d1d5db); }
+.sui-dyn-person-body { text-align: center; align-items: center; }
+
+.sui-dyn-doc-icon { padding: 1rem 1.1rem 0; color: var(--text-subtle, #9ca3af); }
+.sui-dyn-doc-meta { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin: 0.2rem 0; }
+
+/* ── contact-card design's action buttons (shared ActionButtons component — also used
+   by the AI chat block's source cards) ──────────────────────────────────────────── */
+.sui-action-btns { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.25rem; }
+.sui-action-btn {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    min-height: 44px; padding: 0 0.9rem; border-radius: 8px;
+    font-size: calc(0.82rem * var(--font-scale, 1)); font-weight: 600; text-decoration: none;
+    background: var(--color-primary, #0066cc); color: var(--on-primary, #fff);
+    border: 1px solid transparent;
+}
+.sui-action-btn:hover { filter: brightness(0.92); }
+.sui-action-btn:focus-visible { outline: 3px solid var(--color-secondary, #14b8a6); outline-offset: 2px; }
+.sui-action-btn--info { background: var(--surface-card, #fff); color: var(--color-primary, #0066cc); border-color: var(--color-primary, #0066cc); }
+.sui-chat-icon { width: 16px; height: 16px; }
+
+.sui-dyn-skeleton {
+    height: 180px; border-radius: 12px;
+    background: linear-gradient(90deg, var(--surface-muted, #f3f4f6) 25%, var(--skeleton-mid, #e9ecef) 50%, var(--surface-muted, #f3f4f6) 75%);
+    background-size: 200% 100%; animation: sui-dyn-shimmer 1.4s infinite;
+}
+@keyframes sui-dyn-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+:root[data-theme="dark"] { --skeleton-mid: #2a2a2e; }
+
+.sui-dyn-error, .sui-dyn-no-items { padding: 2.5rem 1rem; text-align: center; color: var(--text-subtle, #9ca3af); font-size: calc(0.9rem * var(--font-scale, 1)); grid-column: 1 / -1; }
+
+/* ── Filter bar layout ──────────────────────────────────────────────── */
+.sui-dyn-layout { display: flex; gap: 1.5rem; width: 100%; position: relative; }
+.sui-dyn-layout--top    { flex-direction: column; }
+.sui-dyn-layout--bottom { flex-direction: column-reverse; }
+.sui-dyn-layout--left   { flex-direction: row; }
+.sui-dyn-layout--right  { flex-direction: row-reverse; }
+.sui-dyn-grid-wrap { flex: 1; min-width: 0; }
+
+.sui-dyn-filterbar { flex-shrink: 0; }
+.sui-dyn-filterbar--horizontal {
+    display: flex; flex-wrap: wrap; align-items: flex-start; gap: 1rem 1.5rem;
+    padding-bottom: 1rem; border-bottom: 1px solid var(--border, #e5e7eb); margin-bottom: 0.25rem;
+}
+.sui-dyn-filterbar--vertical { width: 220px; display: flex; flex-direction: column; gap: 1.25rem; }
+.sui-dyn-layout--left .sui-dyn-filterbar--vertical { padding-right: 1.5rem; border-right: 1px solid var(--border, #e5e7eb); }
+.sui-dyn-layout--right .sui-dyn-filterbar--vertical { padding-left: 1.5rem; border-left: 1px solid var(--border, #e5e7eb); }
+
+.sui-dyn-filter-group { display: flex; flex-direction: column; gap: 0.45rem; min-width: 140px; }
+.sui-dyn-filter-label { font-size: calc(0.72rem * var(--font-scale, 1)); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted, #374151); }
+
+.sui-dyn-search-input {
+    width: 100%; box-sizing: border-box; padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border-strong, #d1d5db); border-radius: 8px; font-size: calc(0.875rem * var(--font-scale, 1));
+    outline: none; background: var(--surface-card, #fff); color: var(--text, #1a1a1a); font-family: inherit;
+}
+.sui-dyn-search-input:focus { border-color: var(--accent, #6366f1); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, #6366f1) 15%, transparent); }
+
+.sui-dyn-filter-options { display: flex; flex-direction: column; gap: 0.35rem; }
+.sui-dyn-filterbar--horizontal .sui-dyn-filter-options { max-height: 140px; overflow-y: auto; }
+.sui-dyn-filter-option {
+    display: flex; align-items: center; gap: 0.4rem; font-size: calc(0.875rem * var(--font-scale, 1));
+    color: var(--text-muted, #374151); cursor: pointer; user-select: none; line-height: 1.4;
+}
+.sui-dyn-filter-option input { cursor: pointer; accent-color: var(--accent, #6366f1); width: 15px; height: 15px; flex-shrink: 0; margin: 0; }
+.sui-dyn-filter-select {
+    width: 100%; padding: 0.4rem 0.5rem; border: 1px solid var(--border-strong, #d1d5db); border-radius: 6px;
+    font-size: calc(0.875rem * var(--font-scale, 1)); background: var(--surface-card, #fff); color: var(--text, #1a1a1a); outline: none; font-family: inherit;
+}
+.sui-dyn-filter-select:focus { border-color: var(--accent, #6366f1); }
+
+.sui-dyn-reset-btn {
+    position: absolute; bottom: 0; right: 0;
+    font-size: calc(0.78rem * var(--font-scale, 1)); color: var(--accent, #6366f1); background: none; border: none;
+    cursor: pointer; padding: 0; text-decoration: underline; font-family: inherit;
+}
+
+@media (max-width: 768px) {
+    .sui-dyn-layout--left, .sui-dyn-layout--right { flex-direction: column !important; }
+    .sui-dyn-filterbar--vertical { width: 100% !important; padding: 0 0 1rem !important; border: none !important; border-bottom: 1px solid var(--border, #e5e7eb) !important; }
+    .sui-dyn-filterbar--horizontal, .sui-dyn-filterbar--vertical { gap: 0.75rem; }
+    .sui-dyn-filter-group { min-width: 0; }
+    .sui-dyn-filterbar--horizontal .sui-dyn-filter-options { max-height: none; }
+}
+@media (max-width: 480px) {
+    .sui-dyn-filterbar--horizontal { flex-direction: column; }
+    .sui-dyn-search-group { min-width: 0; }
+}
