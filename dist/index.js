@@ -1184,13 +1184,25 @@ function getByPath(item, path, lang, defaultLang) {
   }
   return cur[lastKey] ?? "";
 }
+function getFilterOptionLabel(item, field, lang, defaultLang) {
+  if (!field.endsWith(".id")) return null;
+  const parentPath = field.slice(0, -".id".length);
+  const label = getByPath(item, `${parentPath}.name`, lang, defaultLang) || getByPath(item, `${parentPath}.title`, lang, defaultLang);
+  return label ? String(label) : null;
+}
 function getUniqueValues(items, field, lang, defaultLang) {
   const counts = {};
+  const labels = {};
   for (const item of items) {
     const val = String(getByPath(item, field, lang, defaultLang) ?? "").trim();
-    if (val) counts[val] = (counts[val] ?? 0) + 1;
+    if (!val) continue;
+    counts[val] = (counts[val] ?? 0) + 1;
+    if (!labels[val]) {
+      const label = getFilterOptionLabel(item, field, lang, defaultLang);
+      if (label) labels[val] = label;
+    }
   }
-  return Object.keys(counts).sort().map((v) => ({ value: v, count: counts[v] }));
+  return Object.keys(counts).sort().map((v) => ({ value: v, count: counts[v], label: labels[v] ?? v }));
 }
 function applyUserFilters(baseItems, activeFilters, searchTerm, filterBar, lang, defaultLang) {
   var _a;
@@ -1330,7 +1342,7 @@ function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFi
             children: [
               /* @__PURE__ */ jsx3("option", { value: "", children: strings.all }),
               options.map((o) => /* @__PURE__ */ jsxs3("option", { value: o.value, children: [
-                o.value,
+                o.label,
                 filterDef.showCount ? ` (${o.count})` : ""
               ] }, o.value))
             ]
@@ -1356,7 +1368,7 @@ function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFi
             }
           ),
           " ",
-          o.value,
+          o.label,
           filterDef.showCount ? ` (${o.count})` : ""
         ] }, o.value)) })
       ] }, filterDef.id);
