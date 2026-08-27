@@ -44,32 +44,55 @@ function getByPath(item, path, lang, defaultLang) {
     return cur[lastKey] ?? '';
 }
 
-// A filter field that targets a reference's raw id (e.g. "subregion.id" — api_server's
-// public_router.js populates every Key/ref schema field, so the referenced entity is
-// already nested at "subregion") reads as a bare id with no extra fetch needed, but the id
-// itself makes a poor dropdown label. Its sibling "subregion.name" is the human-readable
-// name of that same already-populated object — reusing this same getByPath (see its own
-// docstring, which already cites "subregion.name" as the canonical dot-path example) is all
-// that's needed to resolve it, same convention already used for card fieldMap slots.
-function getFilterOptionLabel(item, field, lang, defaultLang) {
-    if (!field.endsWith('.id')) return null;
-    const parentPath = field.slice(0, -'.id'.length);
-    const label = getByPath(item, `${parentPath}.name`, lang, defaultLang)
-        || getByPath(item, `${parentPath}.title`, lang, defaultLang);
-    return label ? String(label) : null;
+// A filter field can resolve two different ways, and both need the SAME id extracted as
+// the actual comparable value or option-building and interactive matching (applyUserFilters,
+// below) would silently disagree with each other:
+//  - A populated reference field accessed directly (e.g. bare "subregion" — api_server's
+//    public_router.js nests the referenced entity under the Key/ref field's own name)
+//    resolves via getByPath as a whole OBJECT, not a scalar. String(object) renders as the
+//    useless "[object Object]" — its .id is the actual comparable value, .name/.title the label.
+//  - A field explicitly pointed at a reference's id (e.g. "subregion.id") already resolves
+//    to a scalar via getByPath — but its sibling "subregion.name" is still recoverable from
+//    that same already-populated parent object for a friendlier label.
+// Plain (non-reference) fields fall through both checks unchanged: value === label, same as
+// before this ever needed to think about references at all.
+function resolveFilterOption(item, field, lang, defaultLang) {
+    const raw = getByPath(item, field, lang, defaultLang);
+
+    // getByPath already collapses a null/undefined intermediate or leaf down to '' (its
+    // own `cur == null` / `?? ''` guards) — explicit here too: an unset optional reference
+    // (e.g. a Service with no subregion at all) must resolve to "no option", not to the
+    // literal string "null"/"undefined" or a false match against some other item's value.
+    if (raw == null || raw === '') return { value: '', label: '' };
+
+    if (typeof raw === 'object' && !Array.isArray(raw)) {
+        const id    = raw.id ?? raw.name ?? raw.title;
+        const label = raw.name ?? raw.title ?? id;
+        // A populated-but-empty reference object ({} — no id/name/title at all, distinct
+        // from the reference being unset entirely) must also resolve to "no option"
+        // rather than the value "undefined".
+        if (id == null) return { value: '', label: '' };
+        const value = String(id);
+        return { value, label: label != null ? String(label) : value };
+    }
+    const value = String(raw).trim();
+    if (value && field.endsWith('.id')) {
+        const parentPath = field.slice(0, -'.id'.length);
+        const label = getByPath(item, `${parentPath}.name`, lang, defaultLang)
+            || getByPath(item, `${parentPath}.title`, lang, defaultLang);
+        if (label) return { value, label: String(label) };
+    }
+    return { value, label: value };
 }
 
 function getUniqueValues(items, field, lang, defaultLang, debug) {
     const counts = {};
     const labels = {};
     for (const item of items) {
-        const val = String(getByPath(item, field, lang, defaultLang) ?? '').trim();
+        const { value: val, label } = resolveFilterOption(item, field, lang, defaultLang);
         if (!val) continue;
         counts[val] = (counts[val] ?? 0) + 1;
-        if (!labels[val]) {
-            const label = getFilterOptionLabel(item, field, lang, defaultLang);
-            if (label) labels[val] = label;
-        }
+        if (!labels[val] && label && label !== val) labels[val] = label;
     }
     // Debug mode (see DynamicContentGrid's `debug` prop): the actual mystery this needs
     // to answer is almost always "why didn't a name resolve" — logging the raw top-level
@@ -99,7 +122,11 @@ function applyUserFilters(baseItems, activeFilters, searchTerm, filterBar, lang,
     for (const [field, values] of Object.entries(activeFilters)) {
         if (!values?.length) continue;
         const valSet = new Set(values.map(v => String(v).toLowerCase()));
-        result = result.filter(item => valSet.has(String(getByPath(item, field, lang, defaultLang) ?? '').toLowerCase()));
+        // Same resolver getUniqueValues uses to build the option list — a field that
+        // resolves to a populated reference object must be reduced to its id here too,
+        // or a selected option (built from that id) would never match any item's raw
+        // (unreduced) object value.
+        result = result.filter(item => valSet.has(resolveFilterOption(item, field, lang, defaultLang).value.toLowerCase()));
     }
     return result;
 }

@@ -49,14 +49,18 @@ const STRINGS = { noResults: 'No results.', all: 'All', clearFilters: '× Clear 
 
 export default function App() {
     const saved = loadSaved();
-    const [apiBase, setApiBase]   = useState(saved.apiBase   ?? 'https://api.kynda.one');
+    // http://localhost:8081 matches mini_site's/admin_client's own local-dev env files
+    // (.env.development's PUBLIC_API_URL, .env.local.gmh.8081's NEXT_PUBLIC_API_SERVER) —
+    // a locally-running api_server, not the public internet. api.kynda.one is a different
+    // (admin-only, auth-gated) gateway and 401s on /public/v1 — don't default to it here.
+    const [apiBase, setApiBase]   = useState(saved.apiBase   ?? 'http://localhost:8081');
     const [region, setRegion]     = useState(saved.region    ?? 'ROTTERDAM');
     const [pageSlug, setPageSlug] = useState(saved.pageSlug  ?? '');
     const [collection, setCollection] = useState(saved.collection ?? 'service');
 
     const [filterBarText, setFilterBarText] = useState(saved.filterBarText ?? JSON.stringify({
         enabled: true, layout: 'horizontal', position: 'top', searchEnabled: false, searchFields: [],
-        filters: [{ id: 'f1', field: 'subregion.id', label: 'Subregion', type: 'select', showCount: true, order: 0 }],
+        filters: [{ id: 'f1', field: 'subregion', label: 'Subregion', type: 'select', showCount: true, order: 0 }],
     }, null, 2));
     const [filtersText, setFiltersText] = useState(saved.filtersText ?? '[]');
 

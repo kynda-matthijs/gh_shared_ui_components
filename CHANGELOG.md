@@ -13,6 +13,26 @@ the one you're actively working on. Forgetting one leaves it silently rendering 
 stale build with no error — check its installed version against this file with
 `grep '"version"' node_modules/stappie-shared-ui/package.json`.
 
+## 0.6.5 — 2026-08-27
+
+Fixes the actual bug the 0.6.3/0.6.4 filter-label attempts didn't catch: a filterBar
+field pointed directly at a populated reference (e.g. bare `"subregion"`, not
+`"subregion.id"`) resolved via `getByPath` to the whole nested object, not a scalar —
+so the dropdown showed the literal string `"[object Object]"`, and worse,
+`applyUserFilters`'s matching logic had the same bug, so selecting an option would
+silently never match any item (comparing an id string against `"[object Object]"`).
+
+- New shared `resolveFilterOption(item, field, lang, defaultLang)` — used by both
+  `getUniqueValues` (building the option list) and `applyUserFilters` (matching the
+  active selection), so the two can no longer disagree. A resolved object's `.id`
+  becomes the comparable value, `.name`/`.title` the label.
+- Explicitly resolves an unset reference (`null`/`undefined`) and a populated-but-empty
+  reference object (`{}`, no id/name/title) to "no option" rather than the literal
+  string `"null"`/`"undefined"`, instead of relying on incidental falsy-check fallthrough.
+- The `"field.endsWith('.id')"` case from 0.6.3 (a field already pointed at the scalar
+  id, recovering its sibling `.name` for the label) is preserved as a second path through
+  the same resolver.
+
 ## 0.6.4 — 2026-08-27
 
 `SHARED_UI_VERSION` is now injected from `package.json`'s `"version"` at build time

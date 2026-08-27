@@ -1184,24 +1184,33 @@ function getByPath(item, path, lang, defaultLang) {
   }
   return cur[lastKey] ?? "";
 }
-function getFilterOptionLabel(item, field, lang, defaultLang) {
-  if (!field.endsWith(".id")) return null;
-  const parentPath = field.slice(0, -".id".length);
-  const label = getByPath(item, `${parentPath}.name`, lang, defaultLang) || getByPath(item, `${parentPath}.title`, lang, defaultLang);
-  return label ? String(label) : null;
+function resolveFilterOption(item, field, lang, defaultLang) {
+  const raw = getByPath(item, field, lang, defaultLang);
+  if (raw == null || raw === "") return { value: "", label: "" };
+  if (typeof raw === "object" && !Array.isArray(raw)) {
+    const id = raw.id ?? raw.name ?? raw.title;
+    const label = raw.name ?? raw.title ?? id;
+    if (id == null) return { value: "", label: "" };
+    const value2 = String(id);
+    return { value: value2, label: label != null ? String(label) : value2 };
+  }
+  const value = String(raw).trim();
+  if (value && field.endsWith(".id")) {
+    const parentPath = field.slice(0, -".id".length);
+    const label = getByPath(item, `${parentPath}.name`, lang, defaultLang) || getByPath(item, `${parentPath}.title`, lang, defaultLang);
+    if (label) return { value, label: String(label) };
+  }
+  return { value, label: value };
 }
 function getUniqueValues(items, field, lang, defaultLang, debug) {
   var _a;
   const counts = {};
   const labels = {};
   for (const item of items) {
-    const val = String(getByPath(item, field, lang, defaultLang) ?? "").trim();
+    const { value: val, label } = resolveFilterOption(item, field, lang, defaultLang);
     if (!val) continue;
     counts[val] = (counts[val] ?? 0) + 1;
-    if (!labels[val]) {
-      const label = getFilterOptionLabel(item, field, lang, defaultLang);
-      if (label) labels[val] = label;
-    }
+    if (!labels[val] && label && label !== val) labels[val] = label;
   }
   if (debug) {
     const topKey = field.split(".")[0];
@@ -1225,7 +1234,7 @@ function applyUserFilters(baseItems, activeFilters, searchTerm, filterBar, lang,
   for (const [field, values] of Object.entries(activeFilters)) {
     if (!(values == null ? void 0 : values.length)) continue;
     const valSet = new Set(values.map((v) => String(v).toLowerCase()));
-    result = result.filter((item) => valSet.has(String(getByPath(item, field, lang, defaultLang) ?? "").toLowerCase()));
+    result = result.filter((item) => valSet.has(resolveFilterOption(item, field, lang, defaultLang).value.toLowerCase()));
   }
   return result;
 }
@@ -1483,7 +1492,7 @@ function DynamicContentGrid({
 }
 
 // src/version.js
-var SHARED_UI_VERSION = true ? "0.6.4" : "dev";
+var SHARED_UI_VERSION = true ? "0.6.5" : "dev";
 export {
   CHAT_STRINGS,
   ChatInterface_default as ChatInterface,
