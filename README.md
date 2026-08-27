@@ -2,9 +2,10 @@
 
 Shared, presentational React components used by both:
 
-- **admin_client** (Next.js/vinext) — the CMS's block editor, e.g. `AiChatPreview.jsx` and
-  `DynamicBlockPreview.jsx` wrap these components with admin-specific data (authenticated
-  API calls, the logged-in session's region config).
+- **admin_client** (Next.js/vinext) — the CMS's block editor, e.g. `AiChatPreview.jsx`
+  (authenticated API calls) and `DynamicBlockPreview.jsx` (the same unauthenticated
+  public API mini_site uses, for WYSIWYG parity with what's actually published) wrap
+  these components with admin-specific data (the logged-in session's region config).
 - **mini_site** (Astro, via `@astrojs/react`) — the published site mounts these as
   `client:load` islands, wrapped with build-time region/page data and no admin auth.
 
@@ -57,6 +58,25 @@ Consumers install this via a git dependency pinned to a commit/tag (see each app
 `package.json`) — bump that pin after building + pushing a change here, then
 `npm install` in the consuming app(s) to pick it up. There is no floating "always use
 latest" branch dependency; updates are always an explicit, reviewable version bump.
+
+### Local playground
+
+```bash
+npm run playground     # vite dev server at http://localhost:5173
+```
+
+Renders `DynamicContentGrid` directly from `src/` (not `dist/`) against real data
+fetched live from the public API (`playground/App.jsx` — enter a region + page slug to
+pull an actual page's `dynamic` block config, or just hand-edit the collection/filters/
+filterBar JSON directly in the page). Editing `src/*.jsx` hot-reloads instantly via
+Vite/React Fast Refresh — no build, no commit, no dependency re-pin, no reinstall in a
+consumer just to see whether a change fixes something. Debug mode (see
+`DynamicContentGrid`'s `debug` prop) is always on here.
+
+This only exists for local iteration — it's never built, published, or imported by
+either consumer, and `npm run build` (the `tsup` step consumers actually depend on)
+doesn't touch it. Use it to get a fix actually working before going through the real
+release flow above.
 
 **There are two consumers, and both need the pin bump — it's easy to update only the
 one you're actively working on and forget the other, which leaves it silently
