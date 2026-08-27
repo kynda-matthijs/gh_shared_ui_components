@@ -54,6 +54,10 @@ const STRINGS = { noResults: 'No results.', all: 'All', clearFilters: '× Clear 
 // DynamicContentGrid prefers when rendering/label-resolving the SAME already-fetched items.
 const LANGS = ['nl', 'en', 'fr', 'de', 'es', 'pt', 'pl', 'tr', 'ru', 'ar', 'zh'];
 
+// Every design DynamicContentGrid's PreviewCard switch actually handles — see its own
+// `switch (design)` for the authoritative list.
+const CARD_DESIGNS = ['image-card', 'compact-card', 'stat-card', 'person-card', 'contact-card', 'document-card'];
+
 export default function App() {
     const saved = loadSaved();
     // http://localhost:8081 matches mini_site's/admin_client's own local-dev env files
@@ -72,6 +76,8 @@ export default function App() {
     const [filtersText, setFiltersText] = useState(saved.filtersText ?? '[]');
     const [lang, setLang]               = useState(saved.lang        ?? 'nl');
     const [defaultLang, setDefaultLang] = useState(saved.defaultLang ?? 'nl');
+    const [cardDesign, setCardDesign]   = useState(saved.cardDesign  ?? 'image-card');
+    const [fieldMapText, setFieldMapText] = useState(saved.fieldMapText ?? '{}');
 
     const [foundBlock, setFoundBlock] = useState(null);
     const [items, setItems]           = useState([]);
@@ -80,7 +86,8 @@ export default function App() {
 
     function persist(patch) {
         localStorage.setItem(LS_KEY, JSON.stringify({
-            apiBase, region, pageSlug, collection, filterBarText, filtersText, lang, defaultLang, ...patch,
+            apiBase, region, pageSlug, collection, filterBarText, filtersText, lang, defaultLang,
+            cardDesign, fieldMapText, ...patch,
         }));
     }
 
@@ -93,11 +100,21 @@ export default function App() {
             const block = findDynamicBlock(page.blocks);
             if (!block) throw new Error('Geen dynamic-block gevonden op deze pagina.');
             setFoundBlock(block);
-            setCollection(block.collection ?? collection);
-            setFilterBarText(JSON.stringify(block.filterBar ?? {}, null, 2));
-            setFiltersText(JSON.stringify(block.filters ?? [], null, 2));
+            const nextCollection   = block.collection ?? collection;
+            const nextFilterBar    = JSON.stringify(block.filterBar ?? {}, null, 2);
+            const nextFilters      = JSON.stringify(block.filters ?? [], null, 2);
+            const nextCardDesign   = block.cardDesign ?? 'image-card';
+            const nextFieldMapText = JSON.stringify(block.fieldMap ?? {}, null, 2);
+            setCollection(nextCollection);
+            setFilterBarText(nextFilterBar);
+            setFiltersText(nextFilters);
+            setCardDesign(nextCardDesign);
+            setFieldMapText(nextFieldMapText);
             setStatus(`Dynamic-block gevonden: collectie "${block.collection}".`);
-            persist({ collection: block.collection ?? collection, filterBarText: JSON.stringify(block.filterBar ?? {}, null, 2), filtersText: JSON.stringify(block.filters ?? [], null, 2) });
+            persist({
+                collection: nextCollection, filterBarText: nextFilterBar, filtersText: nextFilters,
+                cardDesign: nextCardDesign, fieldMapText: nextFieldMapText,
+            });
         } catch (err) {
             setError(String(err.message ?? err));
             setStatus('');
@@ -126,6 +143,10 @@ export default function App() {
     let filterBarError = '';
     try { filterBar = JSON.parse(filterBarText || '{}'); } catch (e) { filterBarError = String(e.message ?? e); }
 
+    let fieldMap = {};
+    let fieldMapError = '';
+    try { fieldMap = JSON.parse(fieldMapText || '{}'); } catch (e) { fieldMapError = String(e.message ?? e); }
+
     return (
         <div style={{ fontFamily: 'system-ui, sans-serif', maxWidth: 1000, margin: '0 auto', padding: '1.5rem', color: '#1a1a1a' }}>
             <h1 style={{ fontSize: '1.25rem' }}>stappie-shared-ui playground <span style={{ fontWeight: 400, color: '#888' }}>— SHARED_UI_VERSION {SHARED_UI_VERSION}</span></h1>
@@ -153,12 +174,22 @@ export default function App() {
 
             <fieldset style={{ marginTop: '1rem', padding: '0.75rem', border: '1px solid #ddd', borderRadius: 6 }}>
                 <legend>2. Collectie + filters (bewerk vrij, geen CMS-save nodig)</legend>
-                <label style={{ display: 'block', marginBottom: '0.5rem' }}>
-                    Collectie <input value={collection} onChange={e => setCollection(e.target.value)} onBlur={() => persist({})} style={{ width: 160 }} />
-                </label>
+                <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.5rem' }}>
+                    <label>Collectie <input value={collection} onChange={e => setCollection(e.target.value)} onBlur={() => persist({})} style={{ width: 160 }} /></label>
+                    <label>Card-ontwerp
+                        {' '}<select value={cardDesign} onChange={e => { setCardDesign(e.target.value); persist({ cardDesign: e.target.value }); }}>
+                            {CARD_DESIGNS.map(d => <option key={d} value={d}>{d}</option>)}
+                        </select>
+                    </label>
+                </div>
                 <label style={{ display: 'block', marginBottom: '0.5rem' }}>
                     Server-side filters (JSON array — <code>public_router.js</code>'s <code>filter[field][op]=value</code>)
                     <textarea value={filtersText} onChange={e => setFiltersText(e.target.value)} onBlur={() => persist({})} rows={3} style={{ width: '100%', fontFamily: 'monospace', fontSize: '0.8rem' }} />
+                </label>
+                <label style={{ display: 'block', marginBottom: '0.5rem' }}>
+                    fieldMap (JSON — maps card slots like heading/image/badge/date to real item field names)
+                    <textarea value={fieldMapText} onChange={e => setFieldMapText(e.target.value)} onBlur={() => persist({})} rows={4} style={{ width: '100%', fontFamily: 'monospace', fontSize: '0.8rem' }} />
+                    {fieldMapError && <div style={{ color: '#c00' }}>Ongeldige JSON: {fieldMapError}</div>}
                 </label>
                 <label style={{ display: 'block' }}>
                     filterBar (JSON — the interactive client-side filter/search config)
@@ -193,6 +224,8 @@ export default function App() {
                     items={items}
                     filterBar={filterBar}
                     collection={collection}
+                    cardDesign={cardDesign}
+                    fieldMap={fieldMap}
                     strings={STRINGS}
                     lang={lang}
                     defaultLang={defaultLang}
