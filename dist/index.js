@@ -1335,16 +1335,6 @@ function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFi
   const sortedFilters = (fb.filters ?? []).filter((f) => f.field).slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   if (!hasSearch && sortedFilters.length === 0) return null;
   return /* @__PURE__ */ jsxs3("div", { className: `sui-dyn-filterbar sui-dyn-filterbar--${fb.layout ?? "horizontal"}`, children: [
-    hasSearch && /* @__PURE__ */ jsx3("div", { className: "sui-dyn-filter-group", children: /* @__PURE__ */ jsx3(
-      "input",
-      {
-        type: "search",
-        className: "sui-dyn-search-input",
-        value: searchTerm,
-        placeholder: (fb.searchLabel || strings.search) + "\u2026",
-        onChange: (e) => setSearchTerm(e.target.value)
-      }
-    ) }),
     sortedFilters.map((filterDef) => {
       const options = getUniqueValues(allItems, filterDef.field, lang, defaultLang, debug);
       if (options.length <= 1) return null;
@@ -1391,7 +1381,17 @@ function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFi
           filterDef.showCount ? ` (${o.count})` : ""
         ] }, o.value)) })
       ] }, filterDef.id);
-    })
+    }),
+    hasSearch && /* @__PURE__ */ jsx3("div", { className: "sui-dyn-filter-group", children: /* @__PURE__ */ jsx3(
+      "input",
+      {
+        type: "search",
+        className: "sui-dyn-search-input",
+        value: searchTerm,
+        placeholder: (fb.searchLabel || strings.search) + "\u2026",
+        onChange: (e) => setSearchTerm(e.target.value)
+      }
+    ) })
   ] });
 }
 var DEFAULT_STRINGS2 = {
@@ -1492,7 +1492,7 @@ function DynamicContentGrid({
 }
 
 // src/version.js
-var SHARED_UI_VERSION = true ? "0.6.5" : "dev";
+var SHARED_UI_VERSION = true ? "0.6.6" : "dev";
 export {
   CHAT_STRINGS,
   ChatInterface_default as ChatInterface,

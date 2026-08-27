@@ -255,17 +255,6 @@ function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFi
 
     return (
         <div className={`sui-dyn-filterbar sui-dyn-filterbar--${fb.layout ?? 'horizontal'}`}>
-            {hasSearch && (
-                <div className="sui-dyn-filter-group">
-                    <input
-                        type="search"
-                        className="sui-dyn-search-input"
-                        value={searchTerm}
-                        placeholder={(fb.searchLabel || strings.search) + '…'}
-                        onChange={e => setSearchTerm(e.target.value)}
-                    />
-                </div>
-            )}
             {sortedFilters.map(filterDef => {
                 const options = getUniqueValues(allItems, filterDef.field, lang, defaultLang, debug);
                 if (options.length <= 1) return null;
@@ -310,6 +299,19 @@ function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFi
                     </div>
                 );
             })}
+            {/* Rendered last, not first — search refines the set the filters above have
+                already narrowed down, so it reads as the final, most-specific step. */}
+            {hasSearch && (
+                <div className="sui-dyn-filter-group">
+                    <input
+                        type="search"
+                        className="sui-dyn-search-input"
+                        value={searchTerm}
+                        placeholder={(fb.searchLabel || strings.search) + '…'}
+                        onChange={e => setSearchTerm(e.target.value)}
+                    />
+                </div>
+            )}
         </div>
     );
 }

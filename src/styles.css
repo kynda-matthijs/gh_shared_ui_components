@@ -106,6 +106,11 @@
 .sui-dyn-layout--right .sui-dyn-filterbar--vertical { padding-left: 1.5rem; border-left: 1px solid var(--border, #e5e7eb); }
 
 .sui-dyn-filter-group { display: flex; flex-direction: column; gap: 0.45rem; min-width: 140px; }
+/* In horizontal layout, a group's own label sits beside its control instead of above it —
+   "Subregion [dropdown]" on one line, not "Subregion" then the dropdown underneath. Only
+   for the horizontal filterbar; the vertical (sidebar) one keeps the stacked look, where a
+   narrow column has no room for label+control side by side. */
+.sui-dyn-filterbar--horizontal .sui-dyn-filter-group { flex-direction: row; align-items: center; }
 .sui-dyn-filter-label { font-size: calc(0.72rem * var(--font-scale, 1)); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted, #374151); }
 
 .sui-dyn-search-input {
@@ -143,5 +148,6 @@
 }
 @media (max-width: 480px) {
     .sui-dyn-filterbar--horizontal { flex-direction: column; }
+    .sui-dyn-filterbar--horizontal .sui-dyn-filter-group { flex-direction: column; align-items: stretch; }
     .sui-dyn-search-group { min-width: 0; }
 }

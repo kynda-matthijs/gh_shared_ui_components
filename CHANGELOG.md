@@ -13,6 +13,21 @@ the one you're actively working on. Forgetting one leaves it silently rendering 
 stale build with no error — check its installed version against this file with
 `grep '"version"' node_modules/stappie-shared-ui/package.json`.
 
+## 0.6.6 — 2026-08-27
+
+Two `FilterBar` layout changes, verified visually against real data in the playground:
+
+- The search input now renders **last**, after every user filter — it refines the set
+  the filters above have already narrowed down, so it reads as the final, most-specific
+  step rather than the first thing shown.
+- In horizontal layout, a filter group's own label now sits beside its control
+  ("Subregion [dropdown]") instead of stacked above it. Scoped to
+  `.sui-dyn-filterbar--horizontal` only — the vertical (sidebar) layout keeps the
+  stacked look, and it reverts to stacked again below 480px where there's no room for
+  label+control side by side. Mirrored into mini_site's `DynamicBlock.astro` and
+  admin_client's `BlockEditorPage.jsx` (its own compact CSS variant) — keep all three in
+  sync if this ever changes again.
+
 ## 0.6.5 — 2026-08-27
 
 Fixes the actual bug the 0.6.3/0.6.4 filter-label attempts didn't catch: a filterBar
