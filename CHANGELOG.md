@@ -12,6 +12,19 @@ the one you're actively working on. Forgetting one leaves it silently rendering 
 stale build with no error — check its installed version against this file with
 `grep '"version"' node_modules/stappie-shared-ui/package.json`.
 
+## 0.6.3 — 2026-08-27
+
+Dynamic-block filter dropdowns show the referenced entity's name instead of its raw id:
+
+- `getUniqueValues`/`FilterBar` in `DynamicContentGrid.jsx` now resolve a display
+  `label` per option — for a filter field ending in `.id` (e.g. `subregion.id`, a
+  populated reference — api_server's public API already nests the full referenced
+  entity there), it reads the sibling `.name`/`.title` off that same object via the
+  existing `getByPath` dot-path accessor. The underlying filter value (and
+  `activeFilters` state) is still the raw id — this only changes what's displayed.
+- Non-reference filters are unaffected (label falls back to the raw value, same as
+  before).
+
 ## 0.6.1 — 2026-08-05
 
 Suppresses source cards while the assistant is still asking a clarifying question:

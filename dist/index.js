@@ -1468,7 +1468,7 @@ function DynamicContentGrid({
 }
 
 // src/version.js
-var SHARED_UI_VERSION = "0.6.1";
+var SHARED_UI_VERSION = "0.6.3";
 export {
   CHAT_STRINGS,
   ChatInterface_default as ChatInterface,
