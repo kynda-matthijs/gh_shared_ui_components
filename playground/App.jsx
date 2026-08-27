@@ -47,6 +47,13 @@ function buildItemsUrl(apiBase, region, collection, filters, maxItems) {
 
 const STRINGS = { noResults: 'No results.', all: 'All', clearFilters: '× Clear filters', search: 'Search' };
 
+// Same set api_server/model_helpers.js's AVAILABLE_LANGUAGES covers (mirrored in
+// DynamicBlockClient.jsx's STRINGS/DATE_LOCALES) — items from the public API carry
+// translated fields as flat `field__i18n__<lang>` keys (see getByPath's own docstring),
+// so switching this doesn't refetch anything, it just changes which key
+// DynamicContentGrid prefers when rendering/label-resolving the SAME already-fetched items.
+const LANGS = ['nl', 'en', 'fr', 'de', 'es', 'pt', 'pl', 'tr', 'ru', 'ar', 'zh'];
+
 export default function App() {
     const saved = loadSaved();
     // http://localhost:8081 matches mini_site's/admin_client's own local-dev env files
@@ -63,6 +70,8 @@ export default function App() {
         filters: [{ id: 'f1', field: 'subregion', label: 'Subregion', type: 'select', showCount: true, order: 0 }],
     }, null, 2));
     const [filtersText, setFiltersText] = useState(saved.filtersText ?? '[]');
+    const [lang, setLang]               = useState(saved.lang        ?? 'nl');
+    const [defaultLang, setDefaultLang] = useState(saved.defaultLang ?? 'nl');
 
     const [foundBlock, setFoundBlock] = useState(null);
     const [items, setItems]           = useState([]);
@@ -71,7 +80,7 @@ export default function App() {
 
     function persist(patch) {
         localStorage.setItem(LS_KEY, JSON.stringify({
-            apiBase, region, pageSlug, collection, filterBarText, filtersText, ...patch,
+            apiBase, region, pageSlug, collection, filterBarText, filtersText, lang, defaultLang, ...patch,
         }));
     }
 
@@ -164,14 +173,29 @@ export default function App() {
 
             <h2 style={{ fontSize: '1.05rem', marginTop: '1.5rem' }}>Live rendering ({items.length} items)</h2>
             <p style={{ fontSize: '0.8rem', color: '#888' }}>Debug mode is always on here — open the devtools console.</p>
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '0.75rem' }}>
+                <label>Taal (lang)
+                    {' '}<select value={lang} onChange={e => { setLang(e.target.value); persist({ lang: e.target.value }); }}>
+                        {LANGS.map(l => <option key={l} value={l}>{l}</option>)}
+                    </select>
+                </label>
+                <label>Standaardtaal (defaultLang)
+                    {' '}<select value={defaultLang} onChange={e => { setDefaultLang(e.target.value); persist({ defaultLang: e.target.value }); }}>
+                        {LANGS.map(l => <option key={l} value={l}>{l}</option>)}
+                    </select>
+                </label>
+                <span style={{ fontSize: '0.78rem', color: '#888' }}>
+                    Geen herfetch nodig — schakelt alleen welke <code>field__i18n__&lt;lang&gt;</code>-variant al opgehaalde items gebruiken.
+                </span>
+            </div>
             <div style={{ border: '1px dashed #ccc', padding: '1rem', borderRadius: 6 }}>
                 <DynamicContentGrid
                     items={items}
                     filterBar={filterBar}
                     collection={collection}
                     strings={STRINGS}
-                    lang="nl"
-                    defaultLang="nl"
+                    lang={lang}
+                    defaultLang={defaultLang}
                     debug
                 />
             </div>
