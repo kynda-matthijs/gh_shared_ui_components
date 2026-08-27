@@ -44,13 +44,34 @@ function getByPath(item, path, lang, defaultLang) {
     return cur[lastKey] ?? '';
 }
 
+// A filter field that targets a reference's raw id (e.g. "subregion.id" — api_server's
+// public_router.js populates every Key/ref schema field, so the referenced entity is
+// already nested at "subregion") reads as a bare id with no extra fetch needed, but the id
+// itself makes a poor dropdown label. Its sibling "subregion.name" is the human-readable
+// name of that same already-populated object — reusing this same getByPath (see its own
+// docstring, which already cites "subregion.name" as the canonical dot-path example) is all
+// that's needed to resolve it, same convention already used for card fieldMap slots.
+function getFilterOptionLabel(item, field, lang, defaultLang) {
+    if (!field.endsWith('.id')) return null;
+    const parentPath = field.slice(0, -'.id'.length);
+    const label = getByPath(item, `${parentPath}.name`, lang, defaultLang)
+        || getByPath(item, `${parentPath}.title`, lang, defaultLang);
+    return label ? String(label) : null;
+}
+
 function getUniqueValues(items, field, lang, defaultLang) {
     const counts = {};
+    const labels = {};
     for (const item of items) {
         const val = String(getByPath(item, field, lang, defaultLang) ?? '').trim();
-        if (val) counts[val] = (counts[val] ?? 0) + 1;
+        if (!val) continue;
+        counts[val] = (counts[val] ?? 0) + 1;
+        if (!labels[val]) {
+            const label = getFilterOptionLabel(item, field, lang, defaultLang);
+            if (label) labels[val] = label;
+        }
     }
-    return Object.keys(counts).sort().map(v => ({ value: v, count: counts[v] }));
+    return Object.keys(counts).sort().map(v => ({ value: v, count: counts[v], label: labels[v] ?? v }));
 }
 
 function applyUserFilters(baseItems, activeFilters, searchTerm, filterBar, lang, defaultLang) {
@@ -216,7 +237,7 @@ function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFi
                                 onChange={e => setActiveFilters(prev => ({ ...prev, [filterDef.field]: e.target.value ? [e.target.value] : [] }))}>
                                 <option value="">{strings.all}</option>
                                 {options.map(o => (
-                                    <option key={o.value} value={o.value}>{o.value}{filterDef.showCount ? ` (${o.count})` : ''}</option>
+                                    <option key={o.value} value={o.value}>{o.label}{filterDef.showCount ? ` (${o.count})` : ''}</option>
                                 ))}
                             </select>
                         ) : (
@@ -239,7 +260,7 @@ function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFi
                                                 }
                                             }}
                                         />
-                                        {' '}{o.value}{filterDef.showCount ? ` (${o.count})` : ''}
+                                        {' '}{o.label}{filterDef.showCount ? ` (${o.count})` : ''}
                                     </label>
                                 ))}
                             </div>
