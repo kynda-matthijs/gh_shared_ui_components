@@ -66,12 +66,13 @@ rendering a stale build with no error:**
 
 ## Versioning
 
-Bump `package.json`'s `"version"` and `src/version.js`'s `SHARED_UI_VERSION` together
-on every change that ships user-visible behavior, and add a `CHANGELOG.md` entry
-describing it — see that file for the format. This is a **diagnostic label, not a
-resolved dependency version** (consumers pin by git SHA, per above), but it's what
-lets you answer "am I actually running the build with feature X?" without digging
-through `node_modules`:
+Bump `package.json`'s `"version"` on every change that ships user-visible behavior,
+and add a `CHANGELOG.md` entry describing it — see that file for the format.
+`src/version.js`'s `SHARED_UI_VERSION` is injected from `package.json`'s version at
+build time (`tsup.config.js`'s `define`), not a second value to remember — this is a
+**diagnostic label, not a resolved dependency version** (consumers pin by git SHA, per
+above), but it's what lets you answer "am I actually running the build with feature
+X?" without digging through `node_modules`:
 
 - Both admin block-editor settings drawers that render a `stappie-shared-ui`
   component (`AiChatBlockEditor.jsx`, `DynamicBlockEditor.jsx` in `admin_client`) show

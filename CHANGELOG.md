@@ -1,9 +1,10 @@
 # Changelog
 
 All notable changes to this package are logged here, newest first. Bump
-`package.json`'s `"version"` and `src/version.js`'s `SHARED_UI_VERSION` together
-whenever you add an entry — that pair is how a consuming app can tell exactly which
-build it's actually running (see README "Versioning").
+`package.json`'s `"version"` whenever you add an entry — `src/version.js`'s
+`SHARED_UI_VERSION` is injected from it at build time (see tsup.config.js), not a
+second value to remember, so a consuming app can always tell exactly which build
+it's actually running (see README "Versioning").
 
 Every consuming app pins this package by git commit SHA, not semver — after
 publishing a new version here, remember to bump the pin in **every** consumer
@@ -11,6 +12,20 @@ publishing a new version here, remember to bump the pin in **every** consumer
 the one you're actively working on. Forgetting one leaves it silently rendering a
 stale build with no error — check its installed version against this file with
 `grep '"version"' node_modules/stappie-shared-ui/package.json`.
+
+## 0.6.4 — 2026-08-27
+
+`SHARED_UI_VERSION` is now injected from `package.json`'s `"version"` at build time
+(`tsup.config.js`'s `define`) instead of a second hand-maintained literal in
+`src/version.js` — two releases in a row (0.6.2, then 0.6.3's own first attempt) shipped
+with that literal stuck on an old value because bumping it was a separate, forgettable
+step. There is now only one number to bump.
+
+Adds an opt-in `debug` prop to `DynamicContentGrid` (default `false`, never set true on
+the published site): when true, `getUniqueValues` logs the raw top-level value behind
+each filterBar field (e.g. `item.subregion`) alongside its resolved option values/labels,
+so a filter that isn't showing a resolved reference name can be diagnosed from actual
+data shape instead of guessing whether the reference is populated.
 
 ## 0.6.3 — 2026-08-27
 

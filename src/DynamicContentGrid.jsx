@@ -59,7 +59,7 @@ function getFilterOptionLabel(item, field, lang, defaultLang) {
     return label ? String(label) : null;
 }
 
-function getUniqueValues(items, field, lang, defaultLang) {
+function getUniqueValues(items, field, lang, defaultLang, debug) {
     const counts = {};
     const labels = {};
     for (const item of items) {
@@ -70,6 +70,21 @@ function getUniqueValues(items, field, lang, defaultLang) {
             const label = getFilterOptionLabel(item, field, lang, defaultLang);
             if (label) labels[val] = label;
         }
+    }
+    // Debug mode (see DynamicContentGrid's `debug` prop): the actual mystery this needs
+    // to answer is almost always "why didn't a name resolve" — logging the raw top-level
+    // value behind the field (e.g. item.subregion) shows immediately whether it's a
+    // populated object (nested .name available) or still a bare id/unpopulated reference,
+    // without needing to guess from the rendered dropdown alone.
+    if (debug) {
+        const topKey = field.split('.')[0];
+        // eslint-disable-next-line no-console
+        console.log(`[DynamicContentGrid debug] filter field "${field}"`, {
+            itemCount: items.length,
+            sampleRawTopLevelValue: items[0]?.[topKey],
+            resolvedOptionValues: Object.keys(counts),
+            resolvedLabels: labels,
+        });
     }
     return Object.keys(counts).sort().map(v => ({ value: v, count: counts[v], label: labels[v] ?? v }));
 }
@@ -205,7 +220,7 @@ function PreviewCard({ item, design, fieldMap, collection, detailUrlBuilder, dat
     }
 }
 
-function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFilters, setSearchTerm, strings, lang, defaultLang }) {
+function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFilters, setSearchTerm, strings, lang, defaultLang, debug }) {
     const fb = filterBar ?? {};
     const hasSearch = fb.searchEnabled;
     const sortedFilters = (fb.filters ?? []).filter(f => f.field).slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -225,7 +240,7 @@ function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFi
                 </div>
             )}
             {sortedFilters.map(filterDef => {
-                const options = getUniqueValues(allItems, filterDef.field, lang, defaultLang);
+                const options = getUniqueValues(allItems, filterDef.field, lang, defaultLang, debug);
                 if (options.length <= 1) return null;
                 const selected = activeFilters[filterDef.field] ?? [];
                 const label = filterDef.label || filterDef.field;
@@ -292,6 +307,9 @@ export default function DynamicContentGrid({
     dateLocale = 'nl-NL',
     lang,
     defaultLang,
+    // Admin-only diagnostic toggle — never set true on the published site. See
+    // getUniqueValues' own comment for exactly what it logs and why.
+    debug = false,
 }) {
     const strings = { ...DEFAULT_STRINGS, ...stringsProp };
     const [activeFilters, setActiveFilters] = useState({});
@@ -341,12 +359,12 @@ export default function DynamicContentGrid({
                         <>
                             <div className="sui-dyn-grid-wrap">{gridContent}</div>
                             <FilterBar allItems={items} filterBar={filterBarConfig} activeFilters={activeFilters} searchTerm={searchTerm}
-                                setActiveFilters={setActiveFilters} setSearchTerm={setSearchTerm} strings={strings} lang={lang} defaultLang={defaultLang} />
+                                setActiveFilters={setActiveFilters} setSearchTerm={setSearchTerm} strings={strings} lang={lang} defaultLang={defaultLang} debug={debug} />
                         </>
                     ) : (
                         <>
                             <FilterBar allItems={items} filterBar={filterBarConfig} activeFilters={activeFilters} searchTerm={searchTerm}
-                                setActiveFilters={setActiveFilters} setSearchTerm={setSearchTerm} strings={strings} lang={lang} defaultLang={defaultLang} />
+                                setActiveFilters={setActiveFilters} setSearchTerm={setSearchTerm} strings={strings} lang={lang} defaultLang={defaultLang} debug={debug} />
                             <div className="sui-dyn-grid-wrap">{gridContent}</div>
                         </>
                     )}

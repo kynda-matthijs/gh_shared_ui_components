@@ -1190,7 +1190,8 @@ function getFilterOptionLabel(item, field, lang, defaultLang) {
   const label = getByPath(item, `${parentPath}.name`, lang, defaultLang) || getByPath(item, `${parentPath}.title`, lang, defaultLang);
   return label ? String(label) : null;
 }
-function getUniqueValues(items, field, lang, defaultLang) {
+function getUniqueValues(items, field, lang, defaultLang, debug) {
+  var _a;
   const counts = {};
   const labels = {};
   for (const item of items) {
@@ -1201,6 +1202,15 @@ function getUniqueValues(items, field, lang, defaultLang) {
       const label = getFilterOptionLabel(item, field, lang, defaultLang);
       if (label) labels[val] = label;
     }
+  }
+  if (debug) {
+    const topKey = field.split(".")[0];
+    console.log(`[DynamicContentGrid debug] filter field "${field}"`, {
+      itemCount: items.length,
+      sampleRawTopLevelValue: (_a = items[0]) == null ? void 0 : _a[topKey],
+      resolvedOptionValues: Object.keys(counts),
+      resolvedLabels: labels
+    });
   }
   return Object.keys(counts).sort().map((v) => ({ value: v, count: counts[v], label: labels[v] ?? v }));
 }
@@ -1310,7 +1320,7 @@ function PreviewCard({ item, design, fieldMap, collection, detailUrlBuilder, dat
       return /* @__PURE__ */ jsx3("div", { className: "sui-dyn-body sui-dyn-body-full", children: /* @__PURE__ */ jsx3("h3", { children: item.name ?? item.title ?? String(item.id ?? "\u2014") }) });
   }
 }
-function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFilters, setSearchTerm, strings, lang, defaultLang }) {
+function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFilters, setSearchTerm, strings, lang, defaultLang, debug }) {
   const fb = filterBar ?? {};
   const hasSearch = fb.searchEnabled;
   const sortedFilters = (fb.filters ?? []).filter((f) => f.field).slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -1327,7 +1337,7 @@ function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFi
       }
     ) }),
     sortedFilters.map((filterDef) => {
-      const options = getUniqueValues(allItems, filterDef.field, lang, defaultLang);
+      const options = getUniqueValues(allItems, filterDef.field, lang, defaultLang, debug);
       if (options.length <= 1) return null;
       const selected = activeFilters[filterDef.field] ?? [];
       const label = filterDef.label || filterDef.field;
@@ -1400,7 +1410,10 @@ function DynamicContentGrid({
   strings: stringsProp,
   dateLocale = "nl-NL",
   lang,
-  defaultLang
+  defaultLang,
+  // Admin-only diagnostic toggle — never set true on the published site. See
+  // getUniqueValues' own comment for exactly what it logs and why.
+  debug = false
 }) {
   const strings = { ...DEFAULT_STRINGS2, ...stringsProp };
   const [activeFilters, setActiveFilters] = useState2({});
@@ -1439,7 +1452,8 @@ function DynamicContentGrid({
             setSearchTerm,
             strings,
             lang,
-            defaultLang
+            defaultLang,
+            debug
           }
         )
       ] }) : /* @__PURE__ */ jsxs3(Fragment2, { children: [
@@ -1454,7 +1468,8 @@ function DynamicContentGrid({
             setSearchTerm,
             strings,
             lang,
-            defaultLang
+            defaultLang,
+            debug
           }
         ),
         /* @__PURE__ */ jsx3("div", { className: "sui-dyn-grid-wrap", children: gridContent })
@@ -1468,7 +1483,7 @@ function DynamicContentGrid({
 }
 
 // src/version.js
-var SHARED_UI_VERSION = "0.6.3";
+var SHARED_UI_VERSION = true ? "0.6.4" : "dev";
 export {
   CHAT_STRINGS,
   ChatInterface_default as ChatInterface,
