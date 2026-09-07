@@ -1403,7 +1403,10 @@ var DEFAULT_STRINGS2 = {
   email: "Email",
   website: "Website",
   route: "Directions",
-  moreInfo: "More info"
+  moreInfo: "More info",
+  // Shown instead of noResults when filterBar.hideUntilFiltered is on and the visitor
+  // hasn't searched/filtered yet — a deliberately empty state, not "0 results found".
+  startPrompt: "Start typing or choose a filter to see results."
 };
 function DynamicContentGrid({
   items = [],
@@ -1427,10 +1430,11 @@ function DynamicContentGrid({
   const strings = { ...DEFAULT_STRINGS2, ...stringsProp };
   const [activeFilters, setActiveFilters] = useState2({});
   const [searchTerm, setSearchTerm] = useState2("");
-  const displayItems = applyUserFilters(items, activeFilters, searchTerm, filterBarConfig, lang, defaultLang);
   const hasFilterBar = filterBarConfig.enabled && (filterBarConfig.searchEnabled || (filterBarConfig.filters ?? []).some((f) => f.field));
   const pos = filterBarConfig.position ?? "top";
   const hasActive = searchTerm.length > 0 || Object.values(activeFilters).some((v) => v.length > 0);
+  const hideUntilFiltered = hasFilterBar && filterBarConfig.hideUntilFiltered && !hasActive;
+  const displayItems = hideUntilFiltered ? [] : applyUserFilters(items, activeFilters, searchTerm, filterBarConfig, lang, defaultLang);
   const buildHref = (item) => detailUrlBuilder ? detailUrlBuilder(item) : defaultDetailUrl(item, fieldMap, collection, lang, defaultLang);
   const gridContent = /* @__PURE__ */ jsxs3(Fragment2, { children: [
     loading && /* @__PURE__ */ jsx3("div", { className: "sui-dyn-grid", style: { "--sui-dyn-cols": Math.min(cols, 4) }, children: Array.from({ length: Math.min(cols * 2, 6) }).map((_, i) => /* @__PURE__ */ jsx3("div", { className: "sui-dyn-skeleton" }, i)) }),
@@ -1438,7 +1442,7 @@ function DynamicContentGrid({
       "\u26A0 ",
       error
     ] }),
-    !loading && !error && displayItems.length === 0 && /* @__PURE__ */ jsx3("p", { className: "sui-dyn-no-items", children: strings.noResults }),
+    !loading && !error && displayItems.length === 0 && /* @__PURE__ */ jsx3("p", { className: "sui-dyn-no-items", children: hideUntilFiltered ? strings.startPrompt : strings.noResults }),
     !loading && !error && displayItems.length > 0 && /* @__PURE__ */ jsx3("div", { className: "sui-dyn-grid", style: { "--sui-dyn-cols": Math.min(cols, 4) }, children: displayItems.map((item) => {
       const href = cardDesign === "contact-card" ? "" : buildHref(item);
       const Wrap = href ? "a" : "article";

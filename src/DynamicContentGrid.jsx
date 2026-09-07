@@ -319,6 +319,9 @@ function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFi
 const DEFAULT_STRINGS = {
     noResults: 'No results found.', all: 'All', clearFilters: '× Clear filters', search: 'Search',
     call: 'Call', email: 'Email', website: 'Website', route: 'Directions', moreInfo: 'More info',
+    // Shown instead of noResults when filterBar.hideUntilFiltered is on and the visitor
+    // hasn't searched/filtered yet — a deliberately empty state, not "0 results found".
+    startPrompt: 'Start typing or choose a filter to see results.',
 };
 
 export default function DynamicContentGrid({
@@ -344,10 +347,15 @@ export default function DynamicContentGrid({
     const [activeFilters, setActiveFilters] = useState({});
     const [searchTerm, setSearchTerm] = useState('');
 
-    const displayItems = applyUserFilters(items, activeFilters, searchTerm, filterBarConfig, lang, defaultLang);
     const hasFilterBar = filterBarConfig.enabled && (filterBarConfig.searchEnabled || (filterBarConfig.filters ?? []).some(f => f.field));
     const pos = filterBarConfig.position ?? 'top';
     const hasActive = searchTerm.length > 0 || Object.values(activeFilters).some(v => v.length > 0);
+    // Opt-in: start with an empty results area instead of showing every item — only
+    // meaningful with an actual filter bar to interact with (hideUntilFiltered on a block
+    // with no search/filters at all would leave it permanently empty, no way to reveal
+    // anything), so hasFilterBar gates it even if the block config sets the flag anyway.
+    const hideUntilFiltered = hasFilterBar && filterBarConfig.hideUntilFiltered && !hasActive;
+    const displayItems = hideUntilFiltered ? [] : applyUserFilters(items, activeFilters, searchTerm, filterBarConfig, lang, defaultLang);
 
     const buildHref = (item) => detailUrlBuilder ? detailUrlBuilder(item) : defaultDetailUrl(item, fieldMap, collection, lang, defaultLang);
 
@@ -359,7 +367,9 @@ export default function DynamicContentGrid({
                 </div>
             )}
             {!loading && error && <p className="sui-dyn-error">⚠ {error}</p>}
-            {!loading && !error && displayItems.length === 0 && <p className="sui-dyn-no-items">{strings.noResults}</p>}
+            {!loading && !error && displayItems.length === 0 && (
+                <p className="sui-dyn-no-items">{hideUntilFiltered ? strings.startPrompt : strings.noResults}</p>
+            )}
             {!loading && !error && displayItems.length > 0 && (
                 <div className="sui-dyn-grid" style={{ '--sui-dyn-cols': Math.min(cols, 4) }}>
                     {displayItems.map(item => {
