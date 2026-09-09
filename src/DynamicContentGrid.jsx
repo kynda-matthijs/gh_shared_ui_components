@@ -293,7 +293,15 @@ function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFi
                 const options = getUniqueValues(allItems, filterDef.field, lang, defaultLang, fieldLabels, debug);
                 if (options.length <= 1) return null;
                 const selected = activeFilters[filterDef.field] ?? [];
-                const label = filterDef.label || filterDef.field;
+                // filterDef.label / label__i18n__<lang> are the visitor-facing filter
+                // labels edited (and swagger-prefilled) in DynamicBlockEditor.jsx's
+                // settings drawer — same __i18n__ convention as every other translatable
+                // block field (lib/i18n.js's i18nKey), never resolved server-side, so
+                // it's picked per the page's current `lang` here same as everything else
+                // in this component that's language-aware.
+                const label = (lang && lang !== defaultLang && filterDef[`label__i18n__${lang}`])
+                    || filterDef.label
+                    || filterDef.field;
                 return (
                     <div key={filterDef.id} className="sui-dyn-filter-group">
                         <span className="sui-dyn-filter-label">{label}</span>

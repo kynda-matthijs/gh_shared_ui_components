@@ -1358,7 +1358,7 @@ function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFi
       const options = getUniqueValues(allItems, filterDef.field, lang, defaultLang, fieldLabels, debug);
       if (options.length <= 1) return null;
       const selected = activeFilters[filterDef.field] ?? [];
-      const label = filterDef.label || filterDef.field;
+      const label = lang && lang !== defaultLang && filterDef[`label__i18n__${lang}`] || filterDef.label || filterDef.field;
       return /* @__PURE__ */ jsxs3("div", { className: "sui-dyn-filter-group", children: [
         /* @__PURE__ */ jsx3("span", { className: "sui-dyn-filter-label", children: label }),
         filterDef.type === "select" ? /* @__PURE__ */ jsxs3(
