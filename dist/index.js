@@ -1184,9 +1184,8 @@ function getByPath(item, path, lang, defaultLang) {
   }
   return cur[lastKey] ?? "";
 }
-function resolveFilterOption(item, field, lang, defaultLang, fieldLabels) {
+function resolveOptionValue(raw, field, lang, defaultLang, fieldLabels) {
   var _a, _b;
-  const raw = getByPath(item, field, lang, defaultLang);
   if (raw == null || raw === "") return { value: "", label: "" };
   if (typeof raw === "object" && !Array.isArray(raw)) {
     const id = raw.id ?? raw.name ?? raw.title;
@@ -1196,11 +1195,6 @@ function resolveFilterOption(item, field, lang, defaultLang, fieldLabels) {
     return { value: value2, label: label != null ? String(label) : value2 };
   }
   const value = String(raw).trim();
-  if (value && field.endsWith(".id")) {
-    const parentPath = field.slice(0, -".id".length);
-    const label = getByPath(item, `${parentPath}.name`, lang, defaultLang) || getByPath(item, `${parentPath}.title`, lang, defaultLang);
-    if (label) return { value, label: String(label) };
-  }
   const enumLabels = (_a = fieldLabels == null ? void 0 : fieldLabels[field]) == null ? void 0 : _a.enumLabels;
   if (value && enumLabels) {
     const i18n = fieldLabels[field].enumLabelsI18n;
@@ -1209,15 +1203,31 @@ function resolveFilterOption(item, field, lang, defaultLang, fieldLabels) {
   }
   return { value, label: value };
 }
+function resolveFilterOptions(item, field, lang, defaultLang, fieldLabels) {
+  const raw = getByPath(item, field, lang, defaultLang);
+  if (Array.isArray(raw)) {
+    return raw.map((el) => resolveOptionValue(el, field, lang, defaultLang, fieldLabels)).filter((o) => o.value);
+  }
+  if (raw == null || raw === "") return [];
+  const value = String(raw).trim();
+  if (value && field.endsWith(".id")) {
+    const parentPath = field.slice(0, -".id".length);
+    const label = getByPath(item, `${parentPath}.name`, lang, defaultLang) || getByPath(item, `${parentPath}.title`, lang, defaultLang);
+    if (label) return [{ value, label: String(label) }];
+  }
+  const resolved = resolveOptionValue(raw, field, lang, defaultLang, fieldLabels);
+  return resolved.value ? [resolved] : [];
+}
 function getUniqueValues(items, field, lang, defaultLang, fieldLabels, debug) {
   var _a;
   const counts = {};
   const labels = {};
   for (const item of items) {
-    const { value: val, label } = resolveFilterOption(item, field, lang, defaultLang, fieldLabels);
-    if (!val) continue;
-    counts[val] = (counts[val] ?? 0) + 1;
-    if (!labels[val] && label && label !== val) labels[val] = label;
+    for (const { value: val, label } of resolveFilterOptions(item, field, lang, defaultLang, fieldLabels)) {
+      if (!val) continue;
+      counts[val] = (counts[val] ?? 0) + 1;
+      if (!labels[val] && label && label !== val) labels[val] = label;
+    }
   }
   if (debug) {
     const topKey = field.split(".")[0];
@@ -1241,7 +1251,9 @@ function applyUserFilters(baseItems, activeFilters, searchTerm, filterBar, lang,
   for (const [field, values] of Object.entries(activeFilters)) {
     if (!(values == null ? void 0 : values.length)) continue;
     const valSet = new Set(values.map((v) => String(v).toLowerCase()));
-    result = result.filter((item) => valSet.has(resolveFilterOption(item, field, lang, defaultLang).value.toLowerCase()));
+    result = result.filter(
+      (item) => resolveFilterOptions(item, field, lang, defaultLang).some((o) => valSet.has(o.value.toLowerCase()))
+    );
   }
   return result;
 }

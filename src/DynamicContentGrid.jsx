@@ -44,33 +44,29 @@ function getByPath(item, path, lang, defaultLang) {
     return cur[lastKey] ?? '';
 }
 
-// A filter field can resolve two different ways, and both need the SAME id extracted as
-// the actual comparable value or option-building and interactive matching (applyUserFilters,
-// below) would silently disagree with each other:
-//  - A populated reference field accessed directly (e.g. bare "subregion" — api_server's
-//    public_router.js nests the referenced entity under the Key/ref field's own name)
-//    resolves via getByPath as a whole OBJECT, not a scalar. String(object) renders as the
-//    useless "[object Object]" — its .id is the actual comparable value, .name/.title the label.
-//  - A field explicitly pointed at a reference's id (e.g. "subregion.id") already resolves
-//    to a scalar via getByPath — but its sibling "subregion.name" is still recoverable from
-//    that same already-populated parent object for a friendlier label.
-// Plain (non-reference) fields fall through both checks unchanged: value === label, same as
-// before this ever needed to think about references at all.
-// fieldLabels (optional, 5th param — every existing call that only cares about `.value`,
-// like applyUserFilters' matching below, is unaffected by leaving it out) is the same
+// Resolves ONE already-extracted raw value (never an array itself — resolveFilterOptions,
+// below, is what unwraps an array field into one call per element) into its {value, label}
+// filter-option shape. Two cases beyond the plain-scalar fallthrough:
+//  - A populated reference field/array element (e.g. bare "subregion", or one element of
+//    "categories" — api_server's public_router.js nests the referenced entity(ies) under
+//    the Key/ref field's own name) resolves via getByPath as an OBJECT, not a scalar.
+//    String(object) renders as the useless "[object Object]" — its .id is the actual
+//    comparable value, .name/.title the label.
+//  - A fixed-enum value (scalar or array-of-strings, e.g. a status field or
+//    Service.ageGroups) swaps the raw stored value for its swagger-declared, translated
+//    label when one's available, same source/precedence (i18n variant first, default label
+//    second) resolveSpecValue (registry.js) uses for the specs block's own multi-enum
+//    rendering — model_helpers.js emits x-enum-labels/x-enum-labels-i18n identically for a
+//    scalar `values` field and an array's `itemValues`, both living directly on the
+//    field's own entry, so this needs no array-specific lookup shape.
+// fieldLabels (optional — every call that only cares about `.value`, like
+// applyUserFilters' matching below, is unaffected by leaving it out) is the same
 // {[field]: {enumLabels, enumLabelsI18n, ...}} shape admin_client's registry.js
-// buildFieldLabels already produces from a resource's swagger schema properties
-// (api_server/model_helpers.js's x-enum-labels/x-enum-labels-i18n) — the specs block reads
-// the identical shape. Swagger is a public endpoint, so both apps can build this the same
-// way; DynamicContentGrid itself can't import registry.js's buildFieldLabels directly
-// (separate package), so each app's own thin wrapper builds it and passes it in as a prop.
-function resolveFilterOption(item, field, lang, defaultLang, fieldLabels) {
-    const raw = getByPath(item, field, lang, defaultLang);
-
-    // getByPath already collapses a null/undefined intermediate or leaf down to '' (its
-    // own `cur == null` / `?? ''` guards) — explicit here too: an unset optional reference
-    // (e.g. a Service with no subregion at all) must resolve to "no option", not to the
-    // literal string "null"/"undefined" or a false match against some other item's value.
+// buildFieldLabels already produces from a resource's swagger schema properties. Swagger
+// is a public endpoint, so both apps can build this the same way; DynamicContentGrid
+// itself can't import registry.js's buildFieldLabels directly (separate package), so each
+// app's own thin wrapper builds it and passes it in as a prop.
+function resolveOptionValue(raw, field, lang, defaultLang, fieldLabels) {
     if (raw == null || raw === '') return { value: '', label: '' };
 
     if (typeof raw === 'object' && !Array.isArray(raw)) {
@@ -84,16 +80,6 @@ function resolveFilterOption(item, field, lang, defaultLang, fieldLabels) {
         return { value, label: label != null ? String(label) : value };
     }
     const value = String(raw).trim();
-    if (value && field.endsWith('.id')) {
-        const parentPath = field.slice(0, -'.id'.length);
-        const label = getByPath(item, `${parentPath}.name`, lang, defaultLang)
-            || getByPath(item, `${parentPath}.title`, lang, defaultLang);
-        if (label) return { value, label: String(label) };
-    }
-    // Fixed-enum value (e.g. a status field) — swap the raw stored value for its
-    // swagger-declared, translated label when one's available, same source/precedence
-    // (i18n variant first, default label second) resolveSpecValue (registry.js) uses for
-    // the specs block.
     const enumLabels = fieldLabels?.[field]?.enumLabels;
     if (value && enumLabels) {
         const i18n = fieldLabels[field].enumLabelsI18n;
@@ -103,14 +89,41 @@ function resolveFilterOption(item, field, lang, defaultLang, fieldLabels) {
     return { value, label: value };
 }
 
+// Resolves a filter field against one item into a LIST of {value, label} options — zero
+// for an unset/empty field, one for a plain scalar field, and one per element for an
+// array-typed field (Service.categories/ageGroups) so a multi-value item shows up under
+// every one of its own filter options, not collapsed into a single bogus combined value.
+function resolveFilterOptions(item, field, lang, defaultLang, fieldLabels) {
+    const raw = getByPath(item, field, lang, defaultLang);
+    if (Array.isArray(raw)) {
+        return raw.map(el => resolveOptionValue(el, field, lang, defaultLang, fieldLabels)).filter(o => o.value);
+    }
+    if (raw == null || raw === '') return [];
+    // A field explicitly pointed at a reference's id (e.g. "subregion.id") already
+    // resolves to a scalar via resolveOptionValue — but its sibling "subregion.name" is
+    // still recoverable from that same already-populated parent object for a friendlier
+    // label. Only meaningful for a genuine non-array leaf, hence handled here rather than
+    // inside resolveOptionValue (which also runs per array element, with no such sibling).
+    const value = String(raw).trim();
+    if (value && field.endsWith('.id')) {
+        const parentPath = field.slice(0, -'.id'.length);
+        const label = getByPath(item, `${parentPath}.name`, lang, defaultLang)
+            || getByPath(item, `${parentPath}.title`, lang, defaultLang);
+        if (label) return [{ value, label: String(label) }];
+    }
+    const resolved = resolveOptionValue(raw, field, lang, defaultLang, fieldLabels);
+    return resolved.value ? [resolved] : [];
+}
+
 function getUniqueValues(items, field, lang, defaultLang, fieldLabels, debug) {
     const counts = {};
     const labels = {};
     for (const item of items) {
-        const { value: val, label } = resolveFilterOption(item, field, lang, defaultLang, fieldLabels);
-        if (!val) continue;
-        counts[val] = (counts[val] ?? 0) + 1;
-        if (!labels[val] && label && label !== val) labels[val] = label;
+        for (const { value: val, label } of resolveFilterOptions(item, field, lang, defaultLang, fieldLabels)) {
+            if (!val) continue;
+            counts[val] = (counts[val] ?? 0) + 1;
+            if (!labels[val] && label && label !== val) labels[val] = label;
+        }
     }
     // Debug mode (see DynamicContentGrid's `debug` prop): the actual mystery this needs
     // to answer is almost always "why didn't a name resolve" — logging the raw top-level
@@ -140,11 +153,14 @@ function applyUserFilters(baseItems, activeFilters, searchTerm, filterBar, lang,
     for (const [field, values] of Object.entries(activeFilters)) {
         if (!values?.length) continue;
         const valSet = new Set(values.map(v => String(v).toLowerCase()));
-        // Same resolver getUniqueValues uses to build the option list — a field that
-        // resolves to a populated reference object must be reduced to its id here too,
-        // or a selected option (built from that id) would never match any item's raw
-        // (unreduced) object value.
-        result = result.filter(item => valSet.has(resolveFilterOption(item, field, lang, defaultLang).value.toLowerCase()));
+        // Same resolver getUniqueValues uses to build the option list. An array-typed
+        // field (e.g. categories/ageGroups) matches if ANY of the item's own values is
+        // among the selected options — the usual "OR within one filter group" semantics
+        // already applied to a scalar field's multi-select checkboxes, just now checked
+        // against a set of resolved values per item instead of exactly one.
+        result = result.filter(item =>
+            resolveFilterOptions(item, field, lang, defaultLang).some(o => valSet.has(o.value.toLowerCase()))
+        );
     }
     return result;
 }
