@@ -127,6 +127,11 @@
     color: var(--text-muted, #374151); cursor: pointer; user-select: none; line-height: 1.4;
 }
 .sui-dyn-filter-option input { cursor: pointer; accent-color: var(--accent, #6366f1); width: 15px; height: 15px; flex-shrink: 0; margin: 0; }
+/* This combination (together with whatever's already selected in every OTHER filter
+   group) would return zero results — DynamicContentGrid.jsx's getFacetedOptions still
+   lists it (so it doesn't jump around as other filters change), just with a 0 count. */
+.sui-dyn-filter-option--zero { opacity: 0.45; cursor: not-allowed; }
+.sui-dyn-filter-option--zero input { cursor: not-allowed; }
 .sui-dyn-filter-select {
     width: 100%; padding: 0.4rem 0.5rem; border: 1px solid var(--border-strong, #d1d5db); border-radius: 6px;
     font-size: calc(0.875rem * var(--font-scale, 1)); background: var(--surface-card, #fff); color: var(--text, #1a1a1a); outline: none; font-family: inherit;

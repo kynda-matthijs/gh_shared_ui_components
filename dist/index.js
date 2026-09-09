@@ -1240,6 +1240,14 @@ function getUniqueValues(items, field, lang, defaultLang, fieldLabels, debug) {
   }
   return Object.keys(counts).sort().map((v) => ({ value: v, count: counts[v], label: labels[v] ?? v }));
 }
+function getFacetedOptions(allItems, filterDef, activeFilters, searchTerm, filterBar, lang, defaultLang, fieldLabels, debug) {
+  const stableOptions = getUniqueValues(allItems, filterDef.field, lang, defaultLang, fieldLabels, debug);
+  const othersActive = Object.fromEntries(Object.entries(activeFilters).filter(([f]) => f !== filterDef.field));
+  const scopedItems = applyUserFilters(allItems, othersActive, searchTerm, filterBar, lang, defaultLang);
+  const scopedCounts = getUniqueValues(scopedItems, filterDef.field, lang, defaultLang, fieldLabels);
+  const countByValue = Object.fromEntries(scopedCounts.map((o) => [o.value, o.count]));
+  return stableOptions.map((o) => ({ ...o, count: countByValue[o.value] ?? 0 }));
+}
 function applyUserFilters(baseItems, activeFilters, searchTerm, filterBar, lang, defaultLang) {
   var _a;
   let result = baseItems;
@@ -1355,7 +1363,7 @@ function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFi
   if (!hasSearch && sortedFilters.length === 0) return null;
   return /* @__PURE__ */ jsxs3("div", { className: `sui-dyn-filterbar sui-dyn-filterbar--${fb.layout ?? "horizontal"}`, children: [
     sortedFilters.map((filterDef) => {
-      const options = getUniqueValues(allItems, filterDef.field, lang, defaultLang, fieldLabels, debug);
+      const options = getFacetedOptions(allItems, filterDef, activeFilters, searchTerm, fb, lang, defaultLang, fieldLabels, debug);
       if (options.length <= 1) return null;
       const selected = activeFilters[filterDef.field] ?? [];
       const label = lang && lang !== defaultLang && filterDef[`label__i18n__${lang}`] || filterDef.label || filterDef.field;
@@ -1369,36 +1377,48 @@ function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFi
             onChange: (e) => setActiveFilters((prev) => ({ ...prev, [filterDef.field]: e.target.value ? [e.target.value] : [] })),
             children: [
               /* @__PURE__ */ jsx3("option", { value: "", children: strings.all }),
-              options.map((o) => /* @__PURE__ */ jsxs3("option", { value: o.value, children: [
-                o.label,
-                filterDef.showCount ? ` (${o.count})` : ""
-              ] }, o.value))
+              options.map((o) => (
+                // A native <option disabled> already renders grayed-out with no
+                // extra CSS — never disable the CURRENTLY selected one, or the
+                // visitor would be stuck unable to pick anything else from this
+                // <select> (an empty selection isn't possible here the way an
+                // unchecked checkbox is).
+                /* @__PURE__ */ jsxs3("option", { value: o.value, disabled: o.count === 0 && selected[0] !== o.value, children: [
+                  o.label,
+                  filterDef.showCount ? ` (${o.count})` : ""
+                ] }, o.value)
+              ))
             ]
           }
-        ) : /* @__PURE__ */ jsx3("div", { className: `sui-dyn-filter-options sui-dyn-filter-options--${filterDef.type ?? "checkbox"}`, children: options.map((o) => /* @__PURE__ */ jsxs3("label", { className: "sui-dyn-filter-option", children: [
-          /* @__PURE__ */ jsx3(
-            "input",
-            {
-              type: filterDef.type === "radio" ? "radio" : "checkbox",
-              name: `sui-dyn-filter-${filterDef.id}`,
-              value: o.value,
-              checked: filterDef.type === "radio" ? selected[0] === o.value : selected.includes(o.value),
-              onChange: (e) => {
-                if (filterDef.type === "radio") {
-                  setActiveFilters((prev) => ({ ...prev, [filterDef.field]: e.target.checked ? [o.value] : [] }));
-                } else {
-                  setActiveFilters((prev) => {
-                    const cur = prev[filterDef.field] ?? [];
-                    return { ...prev, [filterDef.field]: e.target.checked ? [...cur, o.value] : cur.filter((v) => v !== o.value) };
-                  });
+        ) : /* @__PURE__ */ jsx3("div", { className: `sui-dyn-filter-options sui-dyn-filter-options--${filterDef.type ?? "checkbox"}`, children: options.map((o) => {
+          const isChecked = filterDef.type === "radio" ? selected[0] === o.value : selected.includes(o.value);
+          const isZero = o.count === 0 && !isChecked;
+          return /* @__PURE__ */ jsxs3("label", { className: `sui-dyn-filter-option${isZero ? " sui-dyn-filter-option--zero" : ""}`, children: [
+            /* @__PURE__ */ jsx3(
+              "input",
+              {
+                type: filterDef.type === "radio" ? "radio" : "checkbox",
+                name: `sui-dyn-filter-${filterDef.id}`,
+                value: o.value,
+                checked: isChecked,
+                disabled: isZero,
+                onChange: (e) => {
+                  if (filterDef.type === "radio") {
+                    setActiveFilters((prev) => ({ ...prev, [filterDef.field]: e.target.checked ? [o.value] : [] }));
+                  } else {
+                    setActiveFilters((prev) => {
+                      const cur = prev[filterDef.field] ?? [];
+                      return { ...prev, [filterDef.field]: e.target.checked ? [...cur, o.value] : cur.filter((v) => v !== o.value) };
+                    });
+                  }
                 }
               }
-            }
-          ),
-          " ",
-          o.label,
-          filterDef.showCount ? ` (${o.count})` : ""
-        ] }, o.value)) })
+            ),
+            " ",
+            o.label,
+            filterDef.showCount ? ` (${o.count})` : ""
+          ] }, o.value);
+        }) })
       ] }, filterDef.id);
     }),
     hasSearch && /* @__PURE__ */ jsx3("div", { className: "sui-dyn-filter-group", children: /* @__PURE__ */ jsx3(

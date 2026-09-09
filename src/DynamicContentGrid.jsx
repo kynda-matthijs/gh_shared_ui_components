@@ -143,6 +143,28 @@ function getUniqueValues(items, field, lang, defaultLang, fieldLabels, debug) {
     return Object.keys(counts).sort().map(v => ({ value: v, count: counts[v], label: labels[v] ?? v }));
 }
 
+// A filter's option LIST stays stable (always every value seen across allItems, in the
+// same order) regardless of what's currently selected elsewhere — only each option's
+// COUNT is faceted: recomputed against the items that would remain if every OTHER active
+// filter (and the search term) were applied, deliberately excluding this filter's OWN
+// active selection from that scoping. Self-exclusion matters for two reasons: a
+// multi-select checkbox group needs its own options to stay OR'd against each other
+// (picking one shouldn't zero out the others in the SAME group), and a single-select
+// (radio/select) field's currently-chosen option would otherwise always show its own
+// full post-filter count trivially. An option whose faceted count comes back 0 still
+// appears in the list (so a visitor can see it exists and, once they see its "(0)" or
+// grayed-out state, understand why) — it's the caller's job (FilterBar below) to gray/
+// disable it rather than hiding it, which would make the option list jump around as
+// other filters change.
+function getFacetedOptions(allItems, filterDef, activeFilters, searchTerm, filterBar, lang, defaultLang, fieldLabels, debug) {
+    const stableOptions = getUniqueValues(allItems, filterDef.field, lang, defaultLang, fieldLabels, debug);
+    const othersActive  = Object.fromEntries(Object.entries(activeFilters).filter(([f]) => f !== filterDef.field));
+    const scopedItems   = applyUserFilters(allItems, othersActive, searchTerm, filterBar, lang, defaultLang);
+    const scopedCounts  = getUniqueValues(scopedItems, filterDef.field, lang, defaultLang, fieldLabels);
+    const countByValue  = Object.fromEntries(scopedCounts.map(o => [o.value, o.count]));
+    return stableOptions.map(o => ({ ...o, count: countByValue[o.value] ?? 0 }));
+}
+
 function applyUserFilters(baseItems, activeFilters, searchTerm, filterBar, lang, defaultLang) {
     let result = baseItems;
     if (searchTerm) {
@@ -290,7 +312,7 @@ function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFi
     return (
         <div className={`sui-dyn-filterbar sui-dyn-filterbar--${fb.layout ?? 'horizontal'}`}>
             {sortedFilters.map(filterDef => {
-                const options = getUniqueValues(allItems, filterDef.field, lang, defaultLang, fieldLabels, debug);
+                const options = getFacetedOptions(allItems, filterDef, activeFilters, searchTerm, fb, lang, defaultLang, fieldLabels, debug);
                 if (options.length <= 1) return null;
                 const selected = activeFilters[filterDef.field] ?? [];
                 // filterDef.label / label__i18n__<lang> are the visitor-facing filter
@@ -310,18 +332,33 @@ function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFi
                                 onChange={e => setActiveFilters(prev => ({ ...prev, [filterDef.field]: e.target.value ? [e.target.value] : [] }))}>
                                 <option value="">{strings.all}</option>
                                 {options.map(o => (
-                                    <option key={o.value} value={o.value}>{o.label}{filterDef.showCount ? ` (${o.count})` : ''}</option>
+                                    // A native <option disabled> already renders grayed-out with no
+                                    // extra CSS — never disable the CURRENTLY selected one, or the
+                                    // visitor would be stuck unable to pick anything else from this
+                                    // <select> (an empty selection isn't possible here the way an
+                                    // unchecked checkbox is).
+                                    <option key={o.value} value={o.value} disabled={o.count === 0 && selected[0] !== o.value}>
+                                        {o.label}{filterDef.showCount ? ` (${o.count})` : ''}
+                                    </option>
                                 ))}
                             </select>
                         ) : (
                             <div className={`sui-dyn-filter-options sui-dyn-filter-options--${filterDef.type ?? 'checkbox'}`}>
-                                {options.map(o => (
-                                    <label key={o.value} className="sui-dyn-filter-option">
+                                {options.map(o => {
+                                    const isChecked = filterDef.type === 'radio' ? selected[0] === o.value : selected.includes(o.value);
+                                    // Grayed out (not hidden — see getFacetedOptions) once this
+                                    // combination would return zero results, unless it's already
+                                    // checked: disabling an already-checked box would trap the
+                                    // visitor, unable to ever uncheck it again.
+                                    const isZero = o.count === 0 && !isChecked;
+                                    return (
+                                    <label key={o.value} className={`sui-dyn-filter-option${isZero ? ' sui-dyn-filter-option--zero' : ''}`}>
                                         <input
                                             type={filterDef.type === 'radio' ? 'radio' : 'checkbox'}
                                             name={`sui-dyn-filter-${filterDef.id}`}
                                             value={o.value}
-                                            checked={filterDef.type === 'radio' ? selected[0] === o.value : selected.includes(o.value)}
+                                            checked={isChecked}
+                                            disabled={isZero}
                                             onChange={e => {
                                                 if (filterDef.type === 'radio') {
                                                     setActiveFilters(prev => ({ ...prev, [filterDef.field]: e.target.checked ? [o.value] : [] }));
@@ -335,7 +372,8 @@ function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFi
                                         />
                                         {' '}{o.label}{filterDef.showCount ? ` (${o.count})` : ''}
                                     </label>
-                                ))}
+                                    );
+                                })}
                             </div>
                         )}
                     </div>
