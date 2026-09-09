@@ -1184,7 +1184,8 @@ function getByPath(item, path, lang, defaultLang) {
   }
   return cur[lastKey] ?? "";
 }
-function resolveFilterOption(item, field, lang, defaultLang) {
+function resolveFilterOption(item, field, lang, defaultLang, fieldLabels) {
+  var _a, _b;
   const raw = getByPath(item, field, lang, defaultLang);
   if (raw == null || raw === "") return { value: "", label: "" };
   if (typeof raw === "object" && !Array.isArray(raw)) {
@@ -1200,14 +1201,20 @@ function resolveFilterOption(item, field, lang, defaultLang) {
     const label = getByPath(item, `${parentPath}.name`, lang, defaultLang) || getByPath(item, `${parentPath}.title`, lang, defaultLang);
     if (label) return { value, label: String(label) };
   }
+  const enumLabels = (_a = fieldLabels == null ? void 0 : fieldLabels[field]) == null ? void 0 : _a.enumLabels;
+  if (value && enumLabels) {
+    const i18n = fieldLabels[field].enumLabelsI18n;
+    if (lang && lang !== defaultLang && ((_b = i18n == null ? void 0 : i18n[value]) == null ? void 0 : _b[lang])) return { value, label: i18n[value][lang] };
+    if (enumLabels[value]) return { value, label: enumLabels[value] };
+  }
   return { value, label: value };
 }
-function getUniqueValues(items, field, lang, defaultLang, debug) {
+function getUniqueValues(items, field, lang, defaultLang, fieldLabels, debug) {
   var _a;
   const counts = {};
   const labels = {};
   for (const item of items) {
-    const { value: val, label } = resolveFilterOption(item, field, lang, defaultLang);
+    const { value: val, label } = resolveFilterOption(item, field, lang, defaultLang, fieldLabels);
     if (!val) continue;
     counts[val] = (counts[val] ?? 0) + 1;
     if (!labels[val] && label && label !== val) labels[val] = label;
@@ -1329,14 +1336,14 @@ function PreviewCard({ item, design, fieldMap, collection, detailUrlBuilder, dat
       return /* @__PURE__ */ jsx3("div", { className: "sui-dyn-body sui-dyn-body-full", children: /* @__PURE__ */ jsx3("h3", { children: item.name ?? item.title ?? String(item.id ?? "\u2014") }) });
   }
 }
-function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFilters, setSearchTerm, strings, lang, defaultLang, debug }) {
+function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFilters, setSearchTerm, strings, lang, defaultLang, fieldLabels, debug }) {
   const fb = filterBar ?? {};
   const hasSearch = fb.searchEnabled;
   const sortedFilters = (fb.filters ?? []).filter((f) => f.field).slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   if (!hasSearch && sortedFilters.length === 0) return null;
   return /* @__PURE__ */ jsxs3("div", { className: `sui-dyn-filterbar sui-dyn-filterbar--${fb.layout ?? "horizontal"}`, children: [
     sortedFilters.map((filterDef) => {
-      const options = getUniqueValues(allItems, filterDef.field, lang, defaultLang, debug);
+      const options = getUniqueValues(allItems, filterDef.field, lang, defaultLang, fieldLabels, debug);
       if (options.length <= 1) return null;
       const selected = activeFilters[filterDef.field] ?? [];
       const label = filterDef.label || filterDef.field;
@@ -1423,6 +1430,10 @@ function DynamicContentGrid({
   dateLocale = "nl-NL",
   lang,
   defaultLang,
+  // {[field]: {enumLabels, enumLabelsI18n, ...}} — see resolveFilterOption's own comment
+  // for the shape/source. Optional: a filter field with no entry here (or no fieldLabels
+  // prop passed at all) just keeps showing its raw stored value, today's behavior.
+  fieldLabels,
   // Admin-only diagnostic toggle — never set true on the published site. See
   // getUniqueValues' own comment for exactly what it logs and why.
   debug = false
@@ -1466,6 +1477,7 @@ function DynamicContentGrid({
             strings,
             lang,
             defaultLang,
+            fieldLabels,
             debug
           }
         )
@@ -1482,6 +1494,7 @@ function DynamicContentGrid({
             strings,
             lang,
             defaultLang,
+            fieldLabels,
             debug
           }
         ),

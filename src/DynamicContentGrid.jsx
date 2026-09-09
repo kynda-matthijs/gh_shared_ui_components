@@ -56,7 +56,15 @@ function getByPath(item, path, lang, defaultLang) {
 //    that same already-populated parent object for a friendlier label.
 // Plain (non-reference) fields fall through both checks unchanged: value === label, same as
 // before this ever needed to think about references at all.
-function resolveFilterOption(item, field, lang, defaultLang) {
+// fieldLabels (optional, 5th param — every existing call that only cares about `.value`,
+// like applyUserFilters' matching below, is unaffected by leaving it out) is the same
+// {[field]: {enumLabels, enumLabelsI18n, ...}} shape admin_client's registry.js
+// buildFieldLabels already produces from a resource's swagger schema properties
+// (api_server/model_helpers.js's x-enum-labels/x-enum-labels-i18n) — the specs block reads
+// the identical shape. Swagger is a public endpoint, so both apps can build this the same
+// way; DynamicContentGrid itself can't import registry.js's buildFieldLabels directly
+// (separate package), so each app's own thin wrapper builds it and passes it in as a prop.
+function resolveFilterOption(item, field, lang, defaultLang, fieldLabels) {
     const raw = getByPath(item, field, lang, defaultLang);
 
     // getByPath already collapses a null/undefined intermediate or leaf down to '' (its
@@ -82,14 +90,24 @@ function resolveFilterOption(item, field, lang, defaultLang) {
             || getByPath(item, `${parentPath}.title`, lang, defaultLang);
         if (label) return { value, label: String(label) };
     }
+    // Fixed-enum value (e.g. a status field) — swap the raw stored value for its
+    // swagger-declared, translated label when one's available, same source/precedence
+    // (i18n variant first, default label second) resolveSpecValue (registry.js) uses for
+    // the specs block.
+    const enumLabels = fieldLabels?.[field]?.enumLabels;
+    if (value && enumLabels) {
+        const i18n = fieldLabels[field].enumLabelsI18n;
+        if (lang && lang !== defaultLang && i18n?.[value]?.[lang]) return { value, label: i18n[value][lang] };
+        if (enumLabels[value]) return { value, label: enumLabels[value] };
+    }
     return { value, label: value };
 }
 
-function getUniqueValues(items, field, lang, defaultLang, debug) {
+function getUniqueValues(items, field, lang, defaultLang, fieldLabels, debug) {
     const counts = {};
     const labels = {};
     for (const item of items) {
-        const { value: val, label } = resolveFilterOption(item, field, lang, defaultLang);
+        const { value: val, label } = resolveFilterOption(item, field, lang, defaultLang, fieldLabels);
         if (!val) continue;
         counts[val] = (counts[val] ?? 0) + 1;
         if (!labels[val] && label && label !== val) labels[val] = label;
@@ -247,7 +265,7 @@ function PreviewCard({ item, design, fieldMap, collection, detailUrlBuilder, dat
     }
 }
 
-function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFilters, setSearchTerm, strings, lang, defaultLang, debug }) {
+function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFilters, setSearchTerm, strings, lang, defaultLang, fieldLabels, debug }) {
     const fb = filterBar ?? {};
     const hasSearch = fb.searchEnabled;
     const sortedFilters = (fb.filters ?? []).filter(f => f.field).slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -256,7 +274,7 @@ function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFi
     return (
         <div className={`sui-dyn-filterbar sui-dyn-filterbar--${fb.layout ?? 'horizontal'}`}>
             {sortedFilters.map(filterDef => {
-                const options = getUniqueValues(allItems, filterDef.field, lang, defaultLang, debug);
+                const options = getUniqueValues(allItems, filterDef.field, lang, defaultLang, fieldLabels, debug);
                 if (options.length <= 1) return null;
                 const selected = activeFilters[filterDef.field] ?? [];
                 const label = filterDef.label || filterDef.field;
@@ -339,6 +357,10 @@ export default function DynamicContentGrid({
     dateLocale = 'nl-NL',
     lang,
     defaultLang,
+    // {[field]: {enumLabels, enumLabelsI18n, ...}} — see resolveFilterOption's own comment
+    // for the shape/source. Optional: a filter field with no entry here (or no fieldLabels
+    // prop passed at all) just keeps showing its raw stored value, today's behavior.
+    fieldLabels,
     // Admin-only diagnostic toggle — never set true on the published site. See
     // getUniqueValues' own comment for exactly what it logs and why.
     debug = false,
@@ -398,12 +420,12 @@ export default function DynamicContentGrid({
                         <>
                             <div className="sui-dyn-grid-wrap">{gridContent}</div>
                             <FilterBar allItems={items} filterBar={filterBarConfig} activeFilters={activeFilters} searchTerm={searchTerm}
-                                setActiveFilters={setActiveFilters} setSearchTerm={setSearchTerm} strings={strings} lang={lang} defaultLang={defaultLang} debug={debug} />
+                                setActiveFilters={setActiveFilters} setSearchTerm={setSearchTerm} strings={strings} lang={lang} defaultLang={defaultLang} fieldLabels={fieldLabels} debug={debug} />
                         </>
                     ) : (
                         <>
                             <FilterBar allItems={items} filterBar={filterBarConfig} activeFilters={activeFilters} searchTerm={searchTerm}
-                                setActiveFilters={setActiveFilters} setSearchTerm={setSearchTerm} strings={strings} lang={lang} defaultLang={defaultLang} debug={debug} />
+                                setActiveFilters={setActiveFilters} setSearchTerm={setSearchTerm} strings={strings} lang={lang} defaultLang={defaultLang} fieldLabels={fieldLabels} debug={debug} />
                             <div className="sui-dyn-grid-wrap">{gridContent}</div>
                         </>
                     )}
