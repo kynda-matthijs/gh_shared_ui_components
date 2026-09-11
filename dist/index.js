@@ -1189,7 +1189,8 @@ function resolveOptionValue(raw, field, lang, defaultLang, fieldLabels) {
   if (raw == null || raw === "") return { value: "", label: "" };
   if (typeof raw === "object" && !Array.isArray(raw)) {
     const id = raw.id ?? raw.name ?? raw.title;
-    const label = raw.name ?? raw.title ?? id;
+    const translatedLabel = lang && lang !== defaultLang ? raw[`name__i18n__${lang}`] || raw[`title__i18n__${lang}`] : null;
+    const label = translatedLabel || raw.name || raw.title || id;
     if (id == null) return { value: "", label: "" };
     const value2 = String(id);
     return { value: value2, label: label != null ? String(label) : value2 };

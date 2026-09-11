@@ -51,7 +51,11 @@ function getByPath(item, path, lang, defaultLang) {
 //    "categories" — api_server's public_router.js nests the referenced entity(ies) under
 //    the Key/ref field's own name) resolves via getByPath as an OBJECT, not a scalar.
 //    String(object) renders as the useless "[object Object]" — its .id is the actual
-//    comparable value, .name/.title the label.
+//    comparable value, .name/.title the label — preferring that referenced record's own
+//    `name__i18n__<lang>`/`title__i18n__<lang>` when present, same precedence/convention
+//    getByPath above and lib/i18n.ts's `t()` use for every other __i18n__ read: the public
+//    API never resolves __i18n__ server-side, so every language variant sits right there
+//    as its own top-level key on the nested object, same as on `item` itself.
 //  - A fixed-enum value (scalar or array-of-strings, e.g. a status field or
 //    Service.ageGroups) swaps the raw stored value for its swagger-declared, translated
 //    label when one's available, same source/precedence (i18n variant first, default label
@@ -70,8 +74,11 @@ function resolveOptionValue(raw, field, lang, defaultLang, fieldLabels) {
     if (raw == null || raw === '') return { value: '', label: '' };
 
     if (typeof raw === 'object' && !Array.isArray(raw)) {
-        const id    = raw.id ?? raw.name ?? raw.title;
-        const label = raw.name ?? raw.title ?? id;
+        const id = raw.id ?? raw.name ?? raw.title;
+        const translatedLabel = lang && lang !== defaultLang
+            ? (raw[`name__i18n__${lang}`] || raw[`title__i18n__${lang}`])
+            : null;
+        const label = translatedLabel || raw.name || raw.title || id;
         // A populated-but-empty reference object ({} — no id/name/title at all, distinct
         // from the reference being unset entirely) must also resolve to "no option"
         // rather than the value "undefined".
