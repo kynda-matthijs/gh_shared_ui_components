@@ -1,6 +1,6 @@
 {
   "name": "stappie-shared-ui",
-  "version": "0.6.6",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "description": "Shared React components between the Gemeentehuisje/Stappie admin (admin_client) and the public mini-site (mini_site). Presentational, props-driven — no app-specific data fetching, auth, or global state.",
@@ -22,6 +22,8 @@
     "react-dom": ">=18"
   },
   "dependencies": {
+    "@terrazzo/parser": "^2.7.1",
+    "@terrazzo/plugin-css": "^2.7.1",
     "dompurify": "^3.2.4",
     "lucide-react": "^1.23.0"
   },

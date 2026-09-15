@@ -3,3 +3,4 @@ export { default as DynamicContentGrid } from './DynamicContentGrid.jsx';
 export { STARTER_ICONS } from './starterIcons.js';
 export { CHAT_STRINGS } from './chatStrings.js';
 export { SHARED_UI_VERSION } from './version.js';
+export { buildDesignTokensCss, resolveDesignTokens, contrastTextColor } from './dtcg.js';

@@ -47,7 +47,15 @@ npm run build    # one-off build to dist/
 
 `dist/` is committed to this repo (not gitignored, no `prepare`/`postinstall` build
 step) — **run `npm run build` and commit the resulting `dist/` alongside any `src/`
-change** before pushing. This is deliberate: consumers install this package via a git
+change** before pushing.
+
+Only `src/*` gets bundled into `dist/index.js` — every npm dependency (`dompurify`,
+`lucide-react`, `@terrazzo/parser`, etc.) stays a plain `import` for the consuming app's own
+bundler to resolve, exactly like `react`/`react-dom`. This isn't `tsup.config.js`'s
+`external` list doing that (that array only lists react) — it's how `esbuild`/tsup already
+treat `node_modules` imports by default. Practical effect: adding a dependency here means
+adding the *same* dependency to both consuming apps' own `package.json` too, not just this
+package's. This is deliberate: consumers install this package via a git
 dependency (`github:kynda-matthijs/gh_shared_ui_components#<sha>`), and both pnpm (via
 its `allowBuilds` git-dependency gate) and npm would otherwise need to run an
 install-time build script. Shipping the built output instead means installing this

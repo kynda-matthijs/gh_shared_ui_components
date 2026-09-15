@@ -1542,12 +1542,87 @@ function DynamicContentGrid({
 }
 
 // src/version.js
-var SHARED_UI_VERSION = true ? "0.6.6" : "dev";
+var SHARED_UI_VERSION = true ? "0.7.0" : "dev";
+
+// src/dtcg.js
+import { parse, build, defineConfig } from "@terrazzo/parser";
+import cssPlugin from "@terrazzo/plugin-css";
+function virtualFileMapForTokensDoc(tokensDoc) {
+  var _a;
+  const files = { "file:///foundation.tokens.json": ((_a = tokensDoc.sets) == null ? void 0 : _a.foundation) ?? {} };
+  for (const [modName, contexts] of Object.entries(tokensDoc.modifiers || {})) {
+    for (const [ctxName, tree] of Object.entries(contexts || {})) {
+      files[`file:///${modName}/${ctxName}.tokens.json`] = tree;
+    }
+  }
+  return files;
+}
+function buildPermutations(tokensDoc, rootSelector) {
+  var _a;
+  const modifiers = ((_a = tokensDoc.resolver) == null ? void 0 : _a.modifiers) || {};
+  const defaultInput = Object.fromEntries(Object.entries(modifiers).map(([name, def]) => [name, def.default]));
+  const permutations = [{ input: { ...defaultInput }, selector: rootSelector }];
+  for (const [modName, modDef] of Object.entries(modifiers)) {
+    for (const ctxName of Object.keys(modDef.contexts || {})) {
+      if (ctxName === modDef.default) continue;
+      const attr = `data-${modName}`;
+      permutations.push({ input: { ...defaultInput, [modName]: ctxName }, selector: `[${attr}="${ctxName}"]` });
+    }
+  }
+  return permutations;
+}
+async function parseTokensDoc(tokensDoc, { rootSelector = ":root" } = {}) {
+  const virtualFiles = virtualFileMapForTokensDoc(tokensDoc);
+  const req = async (url) => {
+    const key = url.href;
+    if (!(key in virtualFiles)) throw new Error(`Onbekend tokenbestand: ${key}`);
+    return JSON.stringify(virtualFiles[key]);
+  };
+  const permutations = buildPermutations(tokensDoc, rootSelector).map(({ input, selector }) => ({
+    input,
+    prepare: (contents) => `${selector} {
+${contents}
+}`
+  }));
+  const config = defineConfig({ plugins: [cssPlugin({ permutations })] }, { cwd: new URL("file:///") });
+  const parseResult = await parse(
+    [{ filename: new URL("file:///resolver.json"), src: tokensDoc.resolver }],
+    { config, req }
+  );
+  return { parseResult, config };
+}
+async function buildDesignTokensCss(tokensDoc, { rootSelector = ":root" } = {}) {
+  const { parseResult, config } = await parseTokensDoc(tokensDoc, { rootSelector });
+  const buildResult = await build(parseResult.tokens, {
+    sources: parseResult.sources,
+    config,
+    resolver: parseResult.resolver
+  });
+  const cssFile = buildResult.outputFiles.find((f) => f.filename.endsWith(".css"));
+  return (cssFile == null ? void 0 : cssFile.contents) ?? "";
+}
+async function resolveDesignTokens(tokensDoc, mode = {}) {
+  var _a;
+  const { parseResult } = await parseTokensDoc(tokensDoc);
+  const modifiers = ((_a = tokensDoc.resolver) == null ? void 0 : _a.modifiers) || {};
+  const defaultInput = Object.fromEntries(Object.entries(modifiers).map(([name, def]) => [name, def.default]));
+  return parseResult.resolver.apply({ ...defaultInput, ...mode });
+}
+function contrastTextColor(hex, dark = "#1a1a1a", light = "#ffffff") {
+  const match = (hex ?? "").trim().match(/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
+  if (!match) return dark;
+  const [r, g, b] = [1, 2, 3].map((i) => parseInt(match[i], 16));
+  const yiq = (r * 299 + g * 587 + b * 114) / 1e3;
+  return yiq >= 128 ? dark : light;
+}
 export {
   CHAT_STRINGS,
   ChatInterface_default as ChatInterface,
   DynamicContentGrid,
   SHARED_UI_VERSION,
-  STARTER_ICONS
+  STARTER_ICONS,
+  buildDesignTokensCss,
+  contrastTextColor,
+  resolveDesignTokens
 };
 //# sourceMappingURL=index.js.map

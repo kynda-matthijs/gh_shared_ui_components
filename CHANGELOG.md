@@ -13,6 +13,26 @@ the one you're actively working on. Forgetting one leaves it silently rendering 
 stale build with no error — check its installed version against this file with
 `grep '"version"' node_modules/stappie-shared-ui/package.json`.
 
+## 0.7.0 — 2026-09-15
+
+New `dtcg.js` module: the single shared implementation of "DTCG design tokens document ->
+CSS", replacing three previously hand-synced copies of the same small derivation
+(admin_client's designTokens.js/siteFonts.js and mini_site's own SiteLayout.astro logic).
+Wraps `@terrazzo/parser` + `@terrazzo/plugin-css` (new direct dependencies — NOT bundled into
+`dist/index.js`, same as every other dependency here, see README "Developing" — consuming
+apps need their own `@terrazzo/parser`/`@terrazzo/plugin-css` in package.json).
+
+- `buildDesignTokensCss(tokensDoc, { rootSelector })` — parses a tokens document (shape:
+  `{ resolver, sets: { foundation }, modifiers: { <axis>: { <context> } } }`, matching
+  api_server's new `designtoken.tokens` field) into ready-to-embed CSS: a base block (every
+  modifier axis at its own default) plus one attribute-scoped block per authored override
+  context (e.g. `[data-theme="dark"]`). `rootSelector` lets a caller scope the base block to
+  something other than `:root` (admin_client's live preview scopes it to the preview canvas).
+- `resolveDesignTokens(tokensDoc, mode)` — resolves one mode combination to raw token values,
+  for callers that need a value directly rather than as CSS (e.g. a dimension read into JS).
+- `contrastTextColor` — relocated here from being hand-duplicated in both admin_client and
+  mini_site (YIQ luminance, threshold 128); both should import it from here now.
+
 ## 0.6.6 — 2026-08-27
 
 Two `FilterBar` layout changes, verified visually against real data in the playground:
