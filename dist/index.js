@@ -1571,6 +1571,53 @@ function buildPermutations(tokensDoc, rootSelector) {
   }
   return permutations;
 }
+function legacyCompatCssVars(resolved) {
+  var _a, _b;
+  const hex = (id) => {
+    var _a2, _b2;
+    return (_b2 = (_a2 = resolved[id]) == null ? void 0 : _a2.$value) == null ? void 0 : _b2.hex;
+  };
+  const family = (id) => {
+    var _a2;
+    const v = (_a2 = resolved[id]) == null ? void 0 : _a2.$value;
+    return Array.isArray(v) ? v.join(", ") : v;
+  };
+  const dimStr = (v) => v ? `${v.value}${v.unit}` : void 0;
+  const dim = (id) => {
+    var _a2;
+    return dimStr((_a2 = resolved[id]) == null ? void 0 : _a2.$value);
+  };
+  const num = (id) => {
+    var _a2;
+    return (_a2 = resolved[id]) == null ? void 0 : _a2.$value;
+  };
+  const shadow = (id) => {
+    var _a2, _b2, _c, _d;
+    const layer = (_b2 = (_a2 = resolved[id]) == null ? void 0 : _a2.$value) == null ? void 0 : _b2[0];
+    if (!layer) return void 0;
+    const color = ((_c = layer.color) == null ? void 0 : _c.hex) ?? (((_d = layer.color) == null ? void 0 : _d.components) ? `rgb(${layer.color.components.map((c) => Math.round(c * 255)).join(" ")} / ${layer.color.alpha ?? 1})` : void 0);
+    if (!color) return void 0;
+    const spread = layer.spread ? ` ${dimStr(layer.spread)}` : "";
+    return `${dimStr(layer.offsetX)} ${dimStr(layer.offsetY)} ${dimStr(layer.blur)}${spread} ${color}`;
+  };
+  const vars = {
+    "--color-primary": hex("color.primary"),
+    "--color-secondary": hex("color.secondary"),
+    "--on-primary": hex("semantic.action.primary-text"),
+    "--on-secondary": hex("semantic.action.secondary-text"),
+    "--font-heading": family("font.family.heading"),
+    "--font-body": family("font.family.body"),
+    "--radius-md": dim("radius.control"),
+    "--shadow-card": shadow("shadow.card"),
+    "--space-scale": num("space.scale"),
+    "--font-scale": num("font.scale")
+  };
+  for (const lvl of [1, 2, 3, 4]) {
+    const fam = (_b = (_a = resolved[`typography.h${lvl}`]) == null ? void 0 : _a.$value) == null ? void 0 : _b.fontFamily;
+    if (fam) vars[`--font-h${lvl}`] = Array.isArray(fam) ? fam.join(", ") : fam;
+  }
+  return Object.fromEntries(Object.entries(vars).filter(([, v]) => v !== void 0));
+}
 async function parseTokensDoc(tokensDoc, { rootSelector = ":root" } = {}) {
   const virtualFiles = virtualFileMapForTokensDoc(tokensDoc);
   const req = async (url) => {
@@ -1578,18 +1625,25 @@ async function parseTokensDoc(tokensDoc, { rootSelector = ":root" } = {}) {
     if (!(key in virtualFiles)) throw new Error(`Onbekend tokenbestand: ${key}`);
     return JSON.stringify(virtualFiles[key]);
   };
-  const permutations = buildPermutations(tokensDoc, rootSelector).map(({ input, selector }) => ({
-    input,
-    prepare: (contents) => `${selector} {
-${contents}
-}`
-  }));
-  const config = defineConfig({ plugins: [cssPlugin({ permutations })] }, { cwd: new URL("file:///") });
+  const rawPermutations = buildPermutations(tokensDoc, rootSelector);
+  const config = defineConfig({}, { cwd: new URL("file:///") });
   const parseResult = await parse(
     [{ filename: new URL("file:///resolver.json"), src: tokensDoc.resolver }],
     { config, req }
   );
-  return { parseResult, config };
+  const permutations = rawPermutations.map(({ input, selector }) => {
+    const resolved = parseResult.resolver.apply(input);
+    const compatVars = legacyCompatCssVars(resolved);
+    const compatCss = Object.entries(compatVars).map(([k, v]) => `  ${k}: ${v};`).join("\n");
+    return {
+      input,
+      prepare: (contents) => `${selector} {
+${contents}${compatCss ? `
+${compatCss}` : ""}
+}`
+    };
+  });
+  return { parseResult, config: defineConfig({ plugins: [cssPlugin({ permutations })] }, { cwd: new URL("file:///") }) };
 }
 async function buildDesignTokensCss(tokensDoc, { rootSelector = ":root" } = {}) {
   const { parseResult, config } = await parseTokensDoc(tokensDoc, { rootSelector });
