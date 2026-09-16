@@ -1619,7 +1619,10 @@ function legacyCompatCssVars(resolved) {
   for (const [id, token] of Object.entries(resolved)) {
     if (!id.startsWith("component.icon.") || !(token == null ? void 0 : token.$value)) continue;
     const name = id.slice("component.icon.".length);
-    vars[`--icon-${name}`] = ((_c = token.$extensions) == null ? void 0 : _c.kind) === "image" ? `url("${String(token.$value).replace(/"/g, '\\"')}")` : `"${String(token.$value).replace(/"/g, '\\"')}"`;
+    const isImage = ((_c = token.$extensions) == null ? void 0 : _c.kind) === "image";
+    const escaped = String(token.$value).replace(/"/g, '\\"');
+    vars[`--icon-${name}-content`] = isImage ? '""' : `"${escaped}"`;
+    vars[`--icon-${name}-bg`] = isImage ? `url("${escaped}")` : "none";
   }
   return Object.fromEntries(Object.entries(vars).filter(([, v]) => v !== void 0));
 }

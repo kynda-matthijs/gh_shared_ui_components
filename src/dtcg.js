@@ -103,18 +103,26 @@ function legacyCompatCssVars(resolved) {
         const fam = resolved[`typography.h${lvl}`]?.$value?.fontFamily;
         if (fam) vars[`--font-h${lvl}`] = Array.isArray(fam) ? fam.join(', ') : fam;
     }
-    // component.icon.<name> (any name — new ones need no changes here) -> --icon-<name>,
-    // pre-formatted as a value the CSS `content` property actually accepts: a quoted string
-    // for the emoji default, `url(...)` for an admin-uploaded image (DesignTokenTreeEditor.
-    // jsx's IconTokenEditor sets $extensions.kind accordingly) — a raw, unquoted terrazzo
-    // value would be invalid content syntax for the string case and wouldn't apply at all,
-    // so this can't just be a plain id->value passthrough like the vars above.
+    // component.icon.<name> (any name — new ones need no changes here) -> a PAIR of vars,
+    // --icon-<name>-content and --icon-<name>-bg, consumed together by one fixed-size CSS
+    // box (mini_site/block-styles.css) so an admin-uploaded image — of literally any pixel
+    // dimensions, e.g. a 100x100 upload — always scales down to fit the same one-character
+    // footprint the emoji default already has, via background-size: contain rather than
+    // `content: url(...)`. That would have been simpler (one var, not two) but real browsers
+    // don't reliably size/constrain a `content: url()`-generated image the way a normal
+    // element's background-size does, especially for a NON-square source image (which would
+    // otherwise distort or overflow rather than shrink-to-fit) — background-image is the
+    // well-supported way to guarantee "fit in this box, preserve aspect ratio, never bigger".
+    // -content still needs to be a valid `content:` value even for the image case (an empty
+    // pseudo-element renders nothing at all without SOME content, however empty) — '' there,
+    // vs. the emoji's own quoted character(s) when there's no image.
     for (const [id, token] of Object.entries(resolved)) {
         if (!id.startsWith('component.icon.') || !token?.$value) continue;
         const name = id.slice('component.icon.'.length);
-        vars[`--icon-${name}`] = token.$extensions?.kind === 'image'
-            ? `url("${String(token.$value).replace(/"/g, '\\"')}")`
-            : `"${String(token.$value).replace(/"/g, '\\"')}"`;
+        const isImage = token.$extensions?.kind === 'image';
+        const escaped = String(token.$value).replace(/"/g, '\\"');
+        vars[`--icon-${name}-content`] = isImage ? '""' : `"${escaped}"`;
+        vars[`--icon-${name}-bg`] = isImage ? `url("${escaped}")` : 'none';
     }
     return Object.fromEntries(Object.entries(vars).filter(([, v]) => v !== undefined));
 }
