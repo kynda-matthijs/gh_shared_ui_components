@@ -103,6 +103,19 @@ function legacyCompatCssVars(resolved) {
         const fam = resolved[`typography.h${lvl}`]?.$value?.fontFamily;
         if (fam) vars[`--font-h${lvl}`] = Array.isArray(fam) ? fam.join(', ') : fam;
     }
+    // component.icon.<name> (any name — new ones need no changes here) -> --icon-<name>,
+    // pre-formatted as a value the CSS `content` property actually accepts: a quoted string
+    // for the emoji default, `url(...)` for an admin-uploaded image (DesignTokenTreeEditor.
+    // jsx's IconTokenEditor sets $extensions.kind accordingly) — a raw, unquoted terrazzo
+    // value would be invalid content syntax for the string case and wouldn't apply at all,
+    // so this can't just be a plain id->value passthrough like the vars above.
+    for (const [id, token] of Object.entries(resolved)) {
+        if (!id.startsWith('component.icon.') || !token?.$value) continue;
+        const name = id.slice('component.icon.'.length);
+        vars[`--icon-${name}`] = token.$extensions?.kind === 'image'
+            ? `url("${String(token.$value).replace(/"/g, '\\"')}")`
+            : `"${String(token.$value).replace(/"/g, '\\"')}"`;
+    }
     return Object.fromEntries(Object.entries(vars).filter(([, v]) => v !== undefined));
 }
 

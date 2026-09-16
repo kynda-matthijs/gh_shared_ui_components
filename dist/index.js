@@ -1572,7 +1572,7 @@ function buildPermutations(tokensDoc, rootSelector) {
   return permutations;
 }
 function legacyCompatCssVars(resolved) {
-  var _a, _b;
+  var _a, _b, _c;
   const hex = (id) => {
     var _a2, _b2;
     return (_b2 = (_a2 = resolved[id]) == null ? void 0 : _a2.$value) == null ? void 0 : _b2.hex;
@@ -1592,10 +1592,10 @@ function legacyCompatCssVars(resolved) {
     return (_a2 = resolved[id]) == null ? void 0 : _a2.$value;
   };
   const shadow = (id) => {
-    var _a2, _b2, _c, _d;
+    var _a2, _b2, _c2, _d;
     const layer = (_b2 = (_a2 = resolved[id]) == null ? void 0 : _a2.$value) == null ? void 0 : _b2[0];
     if (!layer) return void 0;
-    const color = ((_c = layer.color) == null ? void 0 : _c.hex) ?? (((_d = layer.color) == null ? void 0 : _d.components) ? `rgb(${layer.color.components.map((c) => Math.round(c * 255)).join(" ")} / ${layer.color.alpha ?? 1})` : void 0);
+    const color = ((_c2 = layer.color) == null ? void 0 : _c2.hex) ?? (((_d = layer.color) == null ? void 0 : _d.components) ? `rgb(${layer.color.components.map((c) => Math.round(c * 255)).join(" ")} / ${layer.color.alpha ?? 1})` : void 0);
     if (!color) return void 0;
     const spread = layer.spread ? ` ${dimStr(layer.spread)}` : "";
     return `${dimStr(layer.offsetX)} ${dimStr(layer.offsetY)} ${dimStr(layer.blur)}${spread} ${color}`;
@@ -1615,6 +1615,11 @@ function legacyCompatCssVars(resolved) {
   for (const lvl of [1, 2, 3, 4]) {
     const fam = (_b = (_a = resolved[`typography.h${lvl}`]) == null ? void 0 : _a.$value) == null ? void 0 : _b.fontFamily;
     if (fam) vars[`--font-h${lvl}`] = Array.isArray(fam) ? fam.join(", ") : fam;
+  }
+  for (const [id, token] of Object.entries(resolved)) {
+    if (!id.startsWith("component.icon.") || !(token == null ? void 0 : token.$value)) continue;
+    const name = id.slice("component.icon.".length);
+    vars[`--icon-${name}`] = ((_c = token.$extensions) == null ? void 0 : _c.kind) === "image" ? `url("${String(token.$value).replace(/"/g, '\\"')}")` : `"${String(token.$value).replace(/"/g, '\\"')}"`;
   }
   return Object.fromEntries(Object.entries(vars).filter(([, v]) => v !== void 0));
 }
