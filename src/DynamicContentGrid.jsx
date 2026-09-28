@@ -453,8 +453,8 @@ export default function DynamicContentGrid({
     const gridContent = (
         <>
             {loading && (
-                <div className="sui-dyn-grid" style={{ '--sui-dyn-cols': Math.min(cols, 4) }}>
-                    {Array.from({ length: Math.min(cols * 2, 6) }).map((_, i) => <div key={i} className="sui-dyn-skeleton" />)}
+                <div className="sui-dyn-grid" style={{ '--sui-dyn-cols': Math.min(cols, 6) }}>
+                    {Array.from({ length: Math.min(cols * 2, 12) }).map((_, i) => <div key={i} className="sui-dyn-skeleton" />)}
                 </div>
             )}
             {!loading && error && <p className="sui-dyn-error">⚠ {error}</p>}
@@ -462,7 +462,7 @@ export default function DynamicContentGrid({
                 <p className="sui-dyn-no-items">{hideUntilFiltered ? strings.startPrompt : strings.noResults}</p>
             )}
             {!loading && !error && displayItems.length > 0 && (
-                <div className="sui-dyn-grid" style={{ '--sui-dyn-cols': Math.min(cols, 4) }}>
+                <div className="sui-dyn-grid" style={{ '--sui-dyn-cols': Math.min(cols, 6) }}>
                     {displayItems.map(item => {
                         // contact-card renders its own <a> action buttons — never wrap the
                         // whole card in an outer <a>, that'd nest interactive elements.
