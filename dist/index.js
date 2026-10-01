@@ -1653,22 +1653,43 @@ ${compatCss}` : ""}
   });
   return { parseResult, config: defineConfig({ plugins: [cssPlugin({ permutations })] }, { cwd: new URL("file:///") }) };
 }
-async function buildDesignTokensCss(tokensDoc, { rootSelector = ":root" } = {}) {
-  const { parseResult, config } = await parseTokensDoc(tokensDoc, { rootSelector });
-  const buildResult = await build(parseResult.tokens, {
-    sources: parseResult.sources,
-    config,
-    resolver: parseResult.resolver
+var cssCache = /* @__PURE__ */ new WeakMap();
+var resolveCache = /* @__PURE__ */ new WeakMap();
+function withDocCache(cache, tokensDoc, keyObj, compute) {
+  let perDoc = cache.get(tokensDoc);
+  if (!perDoc) {
+    perDoc = /* @__PURE__ */ new Map();
+    cache.set(tokensDoc, perDoc);
+  }
+  const key = JSON.stringify(keyObj);
+  let cached = perDoc.get(key);
+  if (!cached) {
+    cached = compute();
+    perDoc.set(key, cached);
+  }
+  return cached;
+}
+async function buildDesignTokensCss(tokensDoc, options = {}) {
+  const { rootSelector = ":root" } = options;
+  return withDocCache(cssCache, tokensDoc, { rootSelector }, async () => {
+    const { parseResult, config } = await parseTokensDoc(tokensDoc, { rootSelector });
+    const buildResult = await build(parseResult.tokens, {
+      sources: parseResult.sources,
+      config,
+      resolver: parseResult.resolver
+    });
+    const cssFile = buildResult.outputFiles.find((f) => f.filename.endsWith(".css"));
+    return (cssFile == null ? void 0 : cssFile.contents) ?? "";
   });
-  const cssFile = buildResult.outputFiles.find((f) => f.filename.endsWith(".css"));
-  return (cssFile == null ? void 0 : cssFile.contents) ?? "";
 }
 async function resolveDesignTokens(tokensDoc, mode = {}) {
-  var _a;
-  const { parseResult } = await parseTokensDoc(tokensDoc);
-  const modifiers = ((_a = tokensDoc.resolver) == null ? void 0 : _a.modifiers) || {};
-  const defaultInput = Object.fromEntries(Object.entries(modifiers).map(([name, def]) => [name, def.default]));
-  return parseResult.resolver.apply({ ...defaultInput, ...mode });
+  return withDocCache(resolveCache, tokensDoc, mode, async () => {
+    var _a;
+    const { parseResult } = await parseTokensDoc(tokensDoc);
+    const modifiers = ((_a = tokensDoc.resolver) == null ? void 0 : _a.modifiers) || {};
+    const defaultInput = Object.fromEntries(Object.entries(modifiers).map(([name, def]) => [name, def.default]));
+    return parseResult.resolver.apply({ ...defaultInput, ...mode });
+  });
 }
 function contrastTextColor(hex, dark = "#1a1a1a", light = "#ffffff") {
   const match = (hex ?? "").trim().match(/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
