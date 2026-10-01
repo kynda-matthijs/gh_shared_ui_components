@@ -1,0 +1,37 @@
+#!/usr/bin/env node
+// Reminds you to re-vendor mini_site's copy of stappie-shared-ui before/after pushing,
+// when this push would leave it out of date — the exact drift (package.json pinned to a
+// stale commit while the lockfile had already moved on) that caused a real Cloudflare
+// deploy to fail with an ENOENT on 2026-10-01. See mini_site/scripts/sync-shared-ui.mjs's
+// own header comment for the full incident.
+//
+// Not active by default — git only runs hooks from .git/hooks, which isn't tracked.
+// One-time setup after cloning this repo: `git config core.hooksPath .githooks`.
+//
+// Warns only; never blocks the push. mini_site may not exist on this machine (a fresh
+// clone of just this repo, CI, etc.) or may not have been synced even once yet — both
+// are fine, just nothing to compare against.
+
+import { execFileSync } from 'node:child_process';
+import { readFileSync, existsSync } from 'node:fs';
+import path from 'node:path';
+
+const MARKER_PATH = path.resolve(import.meta.dirname, '../../mini_site/vendor/stappie-shared-ui/.source-commit');
+
+if (!existsSync(MARKER_PATH)) {
+    process.exit(0);
+}
+
+const vendoredCommit = readFileSync(MARKER_PATH, 'utf8').trim();
+const headCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: import.meta.dirname, encoding: 'utf8' }).trim();
+
+if (vendoredCommit !== headCommit) {
+    console.warn('');
+    console.warn('⚠️  stappie-shared-ui pre-push: mini_site\'s vendored copy is out of date.');
+    console.warn(`    vendored commit: ${vendoredCommit}`);
+    console.warn(`    pushing commit:  ${headCommit}`);
+    console.warn('    Run `npm run sync-shared-ui` in mini_site (then commit+push mini_site) to pick this up.');
+    console.warn('');
+}
+
+process.exit(0);
