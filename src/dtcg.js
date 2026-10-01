@@ -160,6 +160,43 @@ async function parseTokensDoc(tokensDoc, { rootSelector = ':root' } = {}) {
     return { parseResult, config: defineConfig({ plugins: [cssPlugin({ permutations })] }, { cwd: new URL('file:///') }) };
 }
 
+// Memoizes both exports below on TOKENS DOC IDENTITY (a WeakMap, not a value-equality cache):
+// every call site that matters — mini_site's SiteLayout.astro/PageBlocks.astro, once per page
+// render — receives the exact same `designToken.tokens` object reference, because it's read
+// via api.ts's own `fetchCache`-memoized single fetch per build. A static site with N pages
+// and L languages was therefore running the full Terrazzo parse+build pipeline N*L times to
+// produce byte-identical CSS; on a real region (Rotterdam: 2,269 pages) that's ~6,800 redundant
+// invocations (buildDesignTokensCss + resolveDesignTokens, the latter called twice per page —
+// SiteLayout for the Google Fonts lookup, PageBlocks for chip contrast). This is the dominant
+// cost of a full site build, ahead of the page count itself.
+//
+// A WeakMap (not a plain Map) is deliberate: it never needs manual invalidation or a max-size
+// eviction policy, and it lets a stale tokensDoc (and its cached CSS) be garbage-collected
+// the moment nothing else references it — which happens naturally between builds, since each
+// `astro build` invocation is a fresh Node process with a fresh module scope.
+//
+// Only the (small) options/mode object needs its own key — the tokensDoc itself never does,
+// since WeakMap keys on identity, not content, which is exactly right here (recomputing CSS
+// for a tokensDoc that merely *looks* the same as an old, GC'd one is correct and cheap; the
+// case this cache exists for is the SAME object re-requested many times in one process).
+const cssCache = new WeakMap();
+const resolveCache = new WeakMap();
+
+function withDocCache(cache, tokensDoc, keyObj, compute) {
+    let perDoc = cache.get(tokensDoc);
+    if (!perDoc) {
+        perDoc = new Map();
+        cache.set(tokensDoc, perDoc);
+    }
+    const key = JSON.stringify(keyObj);
+    let cached = perDoc.get(key);
+    if (!cached) {
+        cached = compute();
+        perDoc.set(key, cached);
+    }
+    return cached;
+}
+
 /**
  * Parses + builds a stored tokens document into ready-to-embed CSS text: a base block (using
  * every modifier's default context) plus one attribute-scoped block per authored override
@@ -171,15 +208,18 @@ async function parseTokensDoc(tokensDoc, { rootSelector = ':root' } = {}) {
  * @param {{ rootSelector?: string }} [options]
  * @returns {Promise<string>} CSS text
  */
-export async function buildDesignTokensCss(tokensDoc, { rootSelector = ':root' } = {}) {
-    const { parseResult, config } = await parseTokensDoc(tokensDoc, { rootSelector });
-    const buildResult = await build(parseResult.tokens, {
-        sources: parseResult.sources,
-        config,
-        resolver: parseResult.resolver,
+export async function buildDesignTokensCss(tokensDoc, options = {}) {
+    const { rootSelector = ':root' } = options;
+    return withDocCache(cssCache, tokensDoc, { rootSelector }, async () => {
+        const { parseResult, config } = await parseTokensDoc(tokensDoc, { rootSelector });
+        const buildResult = await build(parseResult.tokens, {
+            sources: parseResult.sources,
+            config,
+            resolver: parseResult.resolver,
+        });
+        const cssFile = buildResult.outputFiles.find((f) => f.filename.endsWith('.css'));
+        return cssFile?.contents ?? '';
     });
-    const cssFile = buildResult.outputFiles.find((f) => f.filename.endsWith('.css'));
-    return cssFile?.contents ?? '';
 }
 
 /**
@@ -195,10 +235,12 @@ export async function buildDesignTokensCss(tokensDoc, { rootSelector = ':root' }
  *   omitted axes fall back to that axis's own resolver default.
  */
 export async function resolveDesignTokens(tokensDoc, mode = {}) {
-    const { parseResult } = await parseTokensDoc(tokensDoc);
-    const modifiers = tokensDoc.resolver?.modifiers || {};
-    const defaultInput = Object.fromEntries(Object.entries(modifiers).map(([name, def]) => [name, def.default]));
-    return parseResult.resolver.apply({ ...defaultInput, ...mode });
+    return withDocCache(resolveCache, tokensDoc, mode, async () => {
+        const { parseResult } = await parseTokensDoc(tokensDoc);
+        const modifiers = tokensDoc.resolver?.modifiers || {};
+        const defaultInput = Object.fromEntries(Object.entries(modifiers).map(([name, def]) => [name, def.default]));
+        return parseResult.resolver.apply({ ...defaultInput, ...mode });
+    });
 }
 
 // Mirrors mini_site/src/lib/theme.ts's contrastTextColor exactly (YIQ luminance, threshold
