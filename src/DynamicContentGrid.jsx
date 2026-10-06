@@ -310,7 +310,7 @@ function PreviewCard({ item, design, fieldMap, collection, detailUrlBuilder, dat
     }
 }
 
-function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFilters, setSearchTerm, strings, lang, defaultLang, fieldLabels, debug }) {
+function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFilters, setSearchTerm, hasActive, onReset, strings, lang, defaultLang, fieldLabels, debug }) {
     const fb = filterBar ?? {};
     const hasSearch = fb.searchEnabled;
     const sortedFilters = (fb.filters ?? []).filter(f => f.field).slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -399,12 +399,19 @@ function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFi
                     />
                 </div>
             )}
+            {/* Last item of the bar, only once something is chosen — the design's "Filters
+                wissen" sits at the bar's right end, not below the results. */}
+            {hasActive && (
+                <button type="button" className="sui-dyn-reset-btn" onClick={onReset}>
+                    {strings.clearFilters}
+                </button>
+            )}
         </div>
     );
 }
 
 const DEFAULT_STRINGS = {
-    noResults: 'No results found.', all: 'All', clearFilters: '× Clear filters', search: 'Search',
+    noResults: 'No results found.', all: 'All', clearFilters: 'Clear filters', search: 'Search',
     call: 'Call', email: 'Email', website: 'Website', route: 'Directions', moreInfo: 'More info',
     // Shown instead of noResults when filterBar.hideUntilFiltered is on and the visitor
     // hasn't searched/filtered yet — a deliberately empty state, not "0 results found".
@@ -441,6 +448,7 @@ export default function DynamicContentGrid({
     const hasFilterBar = filterBarConfig.enabled && (filterBarConfig.searchEnabled || (filterBarConfig.filters ?? []).some(f => f.field));
     const pos = filterBarConfig.position ?? 'top';
     const hasActive = searchTerm.length > 0 || Object.values(activeFilters).some(v => v.length > 0);
+    const resetFilters = () => { setActiveFilters({}); setSearchTerm(''); };
     // Opt-in: start with an empty results area instead of showing every item — only
     // meaningful with an actual filter bar to interact with (hideUntilFiltered on a block
     // with no search/filters at all would leave it permanently empty, no way to reveal
@@ -489,19 +497,16 @@ export default function DynamicContentGrid({
                         <>
                             <div className="sui-dyn-grid-wrap">{gridContent}</div>
                             <FilterBar allItems={items} filterBar={filterBarConfig} activeFilters={activeFilters} searchTerm={searchTerm}
-                                setActiveFilters={setActiveFilters} setSearchTerm={setSearchTerm} strings={strings} lang={lang} defaultLang={defaultLang} fieldLabels={fieldLabels} debug={debug} />
+                                setActiveFilters={setActiveFilters} setSearchTerm={setSearchTerm} hasActive={hasActive} onReset={resetFilters}
+                                strings={strings} lang={lang} defaultLang={defaultLang} fieldLabels={fieldLabels} debug={debug} />
                         </>
                     ) : (
                         <>
                             <FilterBar allItems={items} filterBar={filterBarConfig} activeFilters={activeFilters} searchTerm={searchTerm}
-                                setActiveFilters={setActiveFilters} setSearchTerm={setSearchTerm} strings={strings} lang={lang} defaultLang={defaultLang} fieldLabels={fieldLabels} debug={debug} />
+                                setActiveFilters={setActiveFilters} setSearchTerm={setSearchTerm} hasActive={hasActive} onReset={resetFilters}
+                                strings={strings} lang={lang} defaultLang={defaultLang} fieldLabels={fieldLabels} debug={debug} />
                             <div className="sui-dyn-grid-wrap">{gridContent}</div>
                         </>
-                    )}
-                    {hasActive && (
-                        <button type="button" className="sui-dyn-reset-btn" onClick={() => { setActiveFilters({}); setSearchTerm(''); }}>
-                            {strings.clearFilters}
-                        </button>
                     )}
                 </div>
             ) : gridContent}
