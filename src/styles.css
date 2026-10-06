@@ -138,11 +138,16 @@
 }
 .sui-dyn-filter-select:focus { border-color: var(--accent, #6366f1); }
 
+/* "Filters wissen": the last item INSIDE the filter bar, pushed to its right end — never positioned out of the bar
+   (it used to be pinned to the layout's bottom-right corner, i.e. below the results). */
 .sui-dyn-reset-btn {
-    position: absolute; bottom: 0; right: 0;
+    margin-left: auto; align-self: center;
     font-size: calc(0.78rem * var(--font-scale, 1)); color: var(--accent, #6366f1); background: none; border: none;
-    cursor: pointer; padding: 0; text-decoration: underline; font-family: inherit;
+    cursor: pointer; padding: 0.25rem; text-decoration: underline; font-family: inherit;
 }
+
+/* "7 results" — between the filter bar and the results */
+.sui-dyn-result-count { margin: 0 0 1rem; font-size: calc(0.875rem * var(--font-scale, 1)); color: var(--text-muted, #6b7280); }
 
 @media (max-width: 768px) {
     .sui-dyn-layout--left, .sui-dyn-layout--right { flex-direction: column !important; }

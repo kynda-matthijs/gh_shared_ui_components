@@ -45,7 +45,7 @@ function buildItemsUrl(apiBase, region, collection, filters, maxItems) {
     return `${apiBase}/public/v1/${region}/${collection}/?${params.toString()}`;
 }
 
-const STRINGS = { noResults: 'No results.', all: 'All', clearFilters: 'Clear filters', search: 'Search' };
+const STRINGS = { noResults: 'No results.', all: 'All', clearFilters: 'Clear filters', search: 'Search', resultCount: { one: '{count} result', other: '{count} results' } };
 
 // Same set api_server/model_helpers.js's AVAILABLE_LANGUAGES covers (mirrored in
 // DynamicBlockClient.jsx's STRINGS/DATE_LOCALES) — items from the public API carry

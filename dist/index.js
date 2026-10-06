@@ -1432,7 +1432,10 @@ function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFi
         onChange: (e) => setSearchTerm(e.target.value)
       }
     ) }),
-    hasActive && /* @__PURE__ */ jsx3("button", { type: "button", className: "sui-dyn-reset-btn", onClick: onReset, children: strings.clearFilters })
+    hasActive && /* @__PURE__ */ jsxs3("button", { type: "button", className: "sui-dyn-reset-btn inbar", onClick: onReset, children: [
+      "X ",
+      strings.clearFilters
+    ] })
   ] });
 }
 var DEFAULT_STRINGS2 = {
@@ -1447,8 +1450,23 @@ var DEFAULT_STRINGS2 = {
   moreInfo: "More info",
   // Shown instead of noResults when filterBar.hideUntilFiltered is on and the visitor
   // hasn't searched/filtered yet — a deliberately empty state, not "0 results found".
-  startPrompt: "Start typing or choose a filter to see results."
+  startPrompt: "Start typing or choose a filter to see results.",
+  // The line under the filter bar. One template per plural category of the page's language
+  // (Intl.PluralRules: one/other for most, plus few/many for Polish/Russian, zero/two/... for
+  // Arabic) — `other` is required, it is what any category without its own template falls back to.
+  resultCount: { one: "{count} result", other: "{count} results" }
 };
+function resultCountText(count, strings, lang, defaultLang) {
+  const templates = strings.resultCount;
+  if (!templates || typeof templates !== "object") return null;
+  let category = "other";
+  try {
+    category = new Intl.PluralRules(lang || defaultLang || "en").select(count);
+  } catch {
+  }
+  const template = templates[category] ?? templates.other;
+  return typeof template === "string" ? template.replace("{count}", String(count)) : null;
+}
 function DynamicContentGrid({
   items = [],
   loading = false,
@@ -1484,7 +1502,9 @@ function DynamicContentGrid({
   };
   const hideUntilFiltered = hasFilterBar && filterBarConfig.hideUntilFiltered && !hasActive;
   const displayItems = hideUntilFiltered ? [] : applyUserFilters(items, activeFilters, searchTerm, filterBarConfig, lang, defaultLang);
+  const countText = hasFilterBar && !loading && !error && !hideUntilFiltered ? resultCountText(displayItems.length, strings, lang, defaultLang) : null;
   const buildHref = (item) => detailUrlBuilder ? detailUrlBuilder(item) : defaultDetailUrl(item, fieldMap, collection, lang, defaultLang);
+  const countLine = countText ? /* @__PURE__ */ jsx3("div", { className: "sui-dyn-result-count", role: "status", children: countText }) : null;
   const gridContent = /* @__PURE__ */ jsxs3(Fragment2, { children: [
     loading && /* @__PURE__ */ jsx3("div", { className: "sui-dyn-grid", style: { "--sui-dyn-cols": Math.min(cols, 6) }, children: Array.from({ length: Math.min(cols * 2, 12) }).map((_, i) => /* @__PURE__ */ jsx3("div", { className: "sui-dyn-skeleton" }, i)) }),
     !loading && error && /* @__PURE__ */ jsxs3("p", { className: "sui-dyn-error", children: [
@@ -1501,7 +1521,10 @@ function DynamicContentGrid({
   return /* @__PURE__ */ jsxs3("section", { className: "sui-dyn-wrap", children: [
     title && /* @__PURE__ */ jsx3("h2", { className: "sui-dyn-title", children: title }),
     hasFilterBar ? /* @__PURE__ */ jsx3("div", { className: `sui-dyn-layout sui-dyn-layout--${pos}`, children: pos === "right" || pos === "bottom" ? /* @__PURE__ */ jsxs3(Fragment2, { children: [
-      /* @__PURE__ */ jsx3("div", { className: "sui-dyn-grid-wrap", children: gridContent }),
+      /* @__PURE__ */ jsxs3("div", { className: "sui-dyn-grid-wrap", children: [
+        countLine,
+        gridContent
+      ] }),
       /* @__PURE__ */ jsx3(
         FilterBar,
         {
@@ -1539,13 +1562,16 @@ function DynamicContentGrid({
           debug
         }
       ),
-      /* @__PURE__ */ jsx3("div", { className: "sui-dyn-grid-wrap", children: gridContent })
+      /* @__PURE__ */ jsxs3("div", { className: "sui-dyn-grid-wrap", children: [
+        countLine,
+        gridContent
+      ] })
     ] }) }) : gridContent
   ] });
 }
 
 // src/version.js
-var SHARED_UI_VERSION = true ? "0.7.1" : "dev";
+var SHARED_UI_VERSION = true ? "0.7.2" : "dev";
 
 // src/dtcg.js
 import { parse, build, defineConfig } from "@terrazzo/parser";

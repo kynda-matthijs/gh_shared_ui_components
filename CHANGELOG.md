@@ -13,6 +13,26 @@ the one you're actively working on. Forgetting one leaves it silently rendering 
 stale build with no error — check its installed version against this file with
 `grep '"version"' node_modules/stappie-shared-ui/package.json`.
 
+## 0.7.2 — 2026-10-06
+
+Two more filter bar changes from the design team's mockup.
+
+- **Result count.** `DynamicContentGrid` shows how many results there are — "7 resultaten", "1 resultaat" —
+  between the filter bar and the results (the top of the results column, whatever side the bar is on).
+  New string `resultCount`: an object of templates by plural category, `{ one: '{count} result',
+  other: '{count} results' }`, picked with `Intl.PluralRules(lang)`; `other` is required and is what any
+  category without its own template falls back to (Polish and Russian also use `few`/`many`, Arabic
+  `zero`/`two`/…). Consumers pass their own: mini_site's `DynamicBlockClient.jsx` (all 11 languages) and
+  admin_client's `DynamicBlockPreview.jsx` (Dutch). Shown only for a block with a filter bar, also at 0
+  (next to the "no results" message), not while loading, after an error, or in the `hideUntilFiltered`
+  "choose a filter first" state. It is a `role="status"` line, so a screen reader announces the new count.
+- **"Filters wissen" is never below the results.** `src/styles.css` (the playground's stylesheet) still
+  pinned `.sui-dyn-reset-btn` with `position: absolute; bottom: 0; right: 0`, which — with the button now
+  inside the bar — put it at the layout's bottom-right corner, under the results. It is an ordinary item
+  at the bar's right end now. The consumers' block-styles.css does the same for a UI still on 0.7.0 (where
+  the button is a sibling of the layout): it is pinned to the top bar's top-right corner, inside the bar,
+  instead of under the results (this replaces the 0.7.1 note above that it stays below the results).
+
 ## 0.7.1 — 2026-10-06
 
 `DynamicContentGrid`: the "Filters wissen" button moves from after the results into the

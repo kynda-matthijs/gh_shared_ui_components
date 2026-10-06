@@ -402,8 +402,8 @@ function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFi
             {/* Last item of the bar, only once something is chosen — the design's "Filters
                 wissen" sits at the bar's right end, not below the results. */}
             {hasActive && (
-                <button type="button" className="sui-dyn-reset-btn" onClick={onReset}>
-                    {strings.clearFilters}
+                <button type="button" className="sui-dyn-reset-btn inbar" onClick={onReset}>
+                    X {strings.clearFilters}
                 </button>
             )}
         </div>
@@ -416,7 +416,21 @@ const DEFAULT_STRINGS = {
     // Shown instead of noResults when filterBar.hideUntilFiltered is on and the visitor
     // hasn't searched/filtered yet — a deliberately empty state, not "0 results found".
     startPrompt: 'Start typing or choose a filter to see results.',
+    // The line under the filter bar. One template per plural category of the page's language
+    // (Intl.PluralRules: one/other for most, plus few/many for Polish/Russian, zero/two/... for
+    // Arabic) — `other` is required, it is what any category without its own template falls back to.
+    resultCount: { one: '{count} result', other: '{count} results' },
 };
+
+// "7 results" / "1 result" in the page's language. Null when the strings carry no template at all.
+function resultCountText(count, strings, lang, defaultLang) {
+    const templates = strings.resultCount;
+    if (!templates || typeof templates !== 'object') return null;
+    let category = 'other';
+    try { category = new Intl.PluralRules(lang || defaultLang || 'en').select(count); } catch { /* unknown language tag: `other` */ }
+    const template = templates[category] ?? templates.other;
+    return typeof template === 'string' ? template.replace('{count}', String(count)) : null;
+}
 
 export default function DynamicContentGrid({
     items = [],
@@ -455,8 +469,15 @@ export default function DynamicContentGrid({
     // anything), so hasFilterBar gates it even if the block config sets the flag anyway.
     const hideUntilFiltered = hasFilterBar && filterBarConfig.hideUntilFiltered && !hasActive;
     const displayItems = hideUntilFiltered ? [] : applyUserFilters(items, activeFilters, searchTerm, filterBarConfig, lang, defaultLang);
+    // Under the bar, above the results — also at 0 (next to the "no results" message). Not while loading, after an
+    // error, or in the deliberately empty "choose a filter first" state, where there is nothing to count yet.
+    const countText = hasFilterBar && !loading && !error && !hideUntilFiltered
+        ? resultCountText(displayItems.length, strings, lang, defaultLang) : null;
 
     const buildHref = (item) => detailUrlBuilder ? detailUrlBuilder(item) : defaultDetailUrl(item, fieldMap, collection, lang, defaultLang);
+
+    // role="status": a screen reader announces the new count as the visitor filters or types
+    const countLine = countText ? <div className="sui-dyn-result-count" role="status">{countText}</div> : null;
 
     const gridContent = (
         <>
@@ -495,7 +516,7 @@ export default function DynamicContentGrid({
                 <div className={`sui-dyn-layout sui-dyn-layout--${pos}`}>
                     {(pos === 'right' || pos === 'bottom') ? (
                         <>
-                            <div className="sui-dyn-grid-wrap">{gridContent}</div>
+                            <div className="sui-dyn-grid-wrap">{countLine}{gridContent}</div>
                             <FilterBar allItems={items} filterBar={filterBarConfig} activeFilters={activeFilters} searchTerm={searchTerm}
                                 setActiveFilters={setActiveFilters} setSearchTerm={setSearchTerm} hasActive={hasActive} onReset={resetFilters}
                                 strings={strings} lang={lang} defaultLang={defaultLang} fieldLabels={fieldLabels} debug={debug} />
@@ -505,7 +526,7 @@ export default function DynamicContentGrid({
                             <FilterBar allItems={items} filterBar={filterBarConfig} activeFilters={activeFilters} searchTerm={searchTerm}
                                 setActiveFilters={setActiveFilters} setSearchTerm={setSearchTerm} hasActive={hasActive} onReset={resetFilters}
                                 strings={strings} lang={lang} defaultLang={defaultLang} fieldLabels={fieldLabels} debug={debug} />
-                            <div className="sui-dyn-grid-wrap">{gridContent}</div>
+                            <div className="sui-dyn-grid-wrap">{countLine}{gridContent}</div>
                         </>
                     )}
                 </div>
