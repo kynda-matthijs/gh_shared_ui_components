@@ -1357,7 +1357,7 @@ function PreviewCard({ item, design, fieldMap, collection, detailUrlBuilder, dat
       return /* @__PURE__ */ jsx3("div", { className: "sui-dyn-body sui-dyn-body-full", children: /* @__PURE__ */ jsx3("h3", { children: item.name ?? item.title ?? String(item.id ?? "\u2014") }) });
   }
 }
-function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFilters, setSearchTerm, strings, lang, defaultLang, fieldLabels, debug }) {
+function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFilters, setSearchTerm, hasActive, onReset, strings, lang, defaultLang, fieldLabels, debug }) {
   const fb = filterBar ?? {};
   const hasSearch = fb.searchEnabled;
   const sortedFilters = (fb.filters ?? []).filter((f) => f.field).slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -1431,13 +1431,14 @@ function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFi
         placeholder: (fb.searchLabel || strings.search) + "\u2026",
         onChange: (e) => setSearchTerm(e.target.value)
       }
-    ) })
+    ) }),
+    hasActive && /* @__PURE__ */ jsx3("button", { type: "button", className: "sui-dyn-reset-btn", onClick: onReset, children: strings.clearFilters })
   ] });
 }
 var DEFAULT_STRINGS2 = {
   noResults: "No results found.",
   all: "All",
-  clearFilters: "\xD7 Clear filters",
+  clearFilters: "Clear filters",
   search: "Search",
   call: "Call",
   email: "Email",
@@ -1477,6 +1478,10 @@ function DynamicContentGrid({
   const hasFilterBar = filterBarConfig.enabled && (filterBarConfig.searchEnabled || (filterBarConfig.filters ?? []).some((f) => f.field));
   const pos = filterBarConfig.position ?? "top";
   const hasActive = searchTerm.length > 0 || Object.values(activeFilters).some((v) => v.length > 0);
+  const resetFilters = () => {
+    setActiveFilters({});
+    setSearchTerm("");
+  };
   const hideUntilFiltered = hasFilterBar && filterBarConfig.hideUntilFiltered && !hasActive;
   const displayItems = hideUntilFiltered ? [] : applyUserFilters(items, activeFilters, searchTerm, filterBarConfig, lang, defaultLang);
   const buildHref = (item) => detailUrlBuilder ? detailUrlBuilder(item) : defaultDetailUrl(item, fieldMap, collection, lang, defaultLang);
@@ -1495,54 +1500,52 @@ function DynamicContentGrid({
   ] });
   return /* @__PURE__ */ jsxs3("section", { className: "sui-dyn-wrap", children: [
     title && /* @__PURE__ */ jsx3("h2", { className: "sui-dyn-title", children: title }),
-    hasFilterBar ? /* @__PURE__ */ jsxs3("div", { className: `sui-dyn-layout sui-dyn-layout--${pos}`, children: [
-      pos === "right" || pos === "bottom" ? /* @__PURE__ */ jsxs3(Fragment2, { children: [
-        /* @__PURE__ */ jsx3("div", { className: "sui-dyn-grid-wrap", children: gridContent }),
-        /* @__PURE__ */ jsx3(
-          FilterBar,
-          {
-            allItems: items,
-            filterBar: filterBarConfig,
-            activeFilters,
-            searchTerm,
-            setActiveFilters,
-            setSearchTerm,
-            strings,
-            lang,
-            defaultLang,
-            fieldLabels,
-            debug
-          }
-        )
-      ] }) : /* @__PURE__ */ jsxs3(Fragment2, { children: [
-        /* @__PURE__ */ jsx3(
-          FilterBar,
-          {
-            allItems: items,
-            filterBar: filterBarConfig,
-            activeFilters,
-            searchTerm,
-            setActiveFilters,
-            setSearchTerm,
-            strings,
-            lang,
-            defaultLang,
-            fieldLabels,
-            debug
-          }
-        ),
-        /* @__PURE__ */ jsx3("div", { className: "sui-dyn-grid-wrap", children: gridContent })
-      ] }),
-      hasActive && /* @__PURE__ */ jsx3("button", { type: "button", className: "sui-dyn-reset-btn", onClick: () => {
-        setActiveFilters({});
-        setSearchTerm("");
-      }, children: strings.clearFilters })
-    ] }) : gridContent
+    hasFilterBar ? /* @__PURE__ */ jsx3("div", { className: `sui-dyn-layout sui-dyn-layout--${pos}`, children: pos === "right" || pos === "bottom" ? /* @__PURE__ */ jsxs3(Fragment2, { children: [
+      /* @__PURE__ */ jsx3("div", { className: "sui-dyn-grid-wrap", children: gridContent }),
+      /* @__PURE__ */ jsx3(
+        FilterBar,
+        {
+          allItems: items,
+          filterBar: filterBarConfig,
+          activeFilters,
+          searchTerm,
+          setActiveFilters,
+          setSearchTerm,
+          hasActive,
+          onReset: resetFilters,
+          strings,
+          lang,
+          defaultLang,
+          fieldLabels,
+          debug
+        }
+      )
+    ] }) : /* @__PURE__ */ jsxs3(Fragment2, { children: [
+      /* @__PURE__ */ jsx3(
+        FilterBar,
+        {
+          allItems: items,
+          filterBar: filterBarConfig,
+          activeFilters,
+          searchTerm,
+          setActiveFilters,
+          setSearchTerm,
+          hasActive,
+          onReset: resetFilters,
+          strings,
+          lang,
+          defaultLang,
+          fieldLabels,
+          debug
+        }
+      ),
+      /* @__PURE__ */ jsx3("div", { className: "sui-dyn-grid-wrap", children: gridContent })
+    ] }) }) : gridContent
   ] });
 }
 
 // src/version.js
-var SHARED_UI_VERSION = true ? "0.7.0" : "dev";
+var SHARED_UI_VERSION = true ? "0.7.1" : "dev";
 
 // src/dtcg.js
 import { parse, build, defineConfig } from "@terrazzo/parser";
