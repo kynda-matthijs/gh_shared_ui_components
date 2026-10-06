@@ -13,6 +13,23 @@ the one you're actively working on. Forgetting one leaves it silently rendering 
 stale build with no error — check its installed version against this file with
 `grep '"version"' node_modules/stappie-shared-ui/package.json`.
 
+## 0.7.1 — 2026-10-06
+
+`DynamicContentGrid`: the "Filters wissen" button moves from after the results into the
+filter bar itself — its last item, still shown only once a filter or the search is active.
+The design team's filter bar mockup puts it at the bar's right end, next to the controls
+it clears.
+
+- Markup only. `FilterBar` takes two new props (`hasActive`, `onReset`); the parent no longer
+  renders the button as a direct child of `.sui-dyn-layout`.
+- The default `clearFilters` string loses its "× " prefix — the design shows a plain link,
+  "Filters wissen". Consumers that pass their own strings (mini_site's `DynamicBlockClient.jsx`,
+  admin_client's `DynamicBlockPreview.jsx`) dropped it too.
+- Styling is the consumer's: block-styles.css (admin_client's `blocks/block-styles.css`,
+  vendored into mini_site by `npm run sync-blocks`) styles it inside `.sui-dyn-filterbar`
+  and keeps the old `.sui-dyn-layout > .sui-dyn-reset-btn` rule, so a consumer still on
+  0.7.0 renders the new CSS correctly (button below the results, as before).
+
 ## 0.7.0 — 2026-09-15
 
 New `dtcg.js` module: the single shared implementation of "DTCG design tokens document ->
