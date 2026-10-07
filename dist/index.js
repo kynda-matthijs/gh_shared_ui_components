@@ -1193,35 +1193,7 @@ function canonicalFilterState(activeFilters, universe) {
   return out;
 }
 
-// src/DynamicContentGrid.jsx
-import { Fragment as Fragment2, jsx as jsx3, jsxs as jsxs3 } from "react/jsx-runtime";
-function trunc(s, n = 120) {
-  const str = String(s ?? "");
-  return str.length > n ? str.slice(0, n) + "\u2026" : str;
-}
-function fmtDate(v, locale = "nl-NL") {
-  try {
-    return new Date(v).toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" });
-  } catch {
-    return String(v);
-  }
-}
-function getByPath(item, path, lang, defaultLang) {
-  if (!item || !path) return "";
-  const parts = path.split(".");
-  let cur = item;
-  for (let i = 0; i < parts.length - 1; i++) {
-    if (cur == null || typeof cur !== "object") return "";
-    cur = cur[parts[i]];
-  }
-  if (cur == null || typeof cur !== "object") return "";
-  const lastKey = parts[parts.length - 1];
-  if (lang && lang !== defaultLang) {
-    const translated = cur[`${lastKey}__i18n__${lang}`];
-    if (translated != null && translated !== "") return translated;
-  }
-  return cur[lastKey] ?? "";
-}
+// src/slotValues.js
 var isIndex = (key) => /^\d+$/.test(key);
 function valuesByPath(item, path, lang, defaultLang) {
   if (!item || !path) return [];
@@ -1255,6 +1227,56 @@ function stableIndex(item, n) {
   for (let i = 0; i < key.length; i++) h = h * 31 + key.charCodeAt(i) >>> 0;
   return h % n;
 }
+function resolveOptionValue(raw, field, lang, defaultLang, fieldLabels) {
+  var _a, _b;
+  if (raw == null || raw === "") return { value: "", label: "" };
+  if (typeof raw === "object" && !Array.isArray(raw)) {
+    const id = raw.id ?? raw.name ?? raw.title;
+    const translatedLabel = lang && lang !== defaultLang ? raw[`name__i18n__${lang}`] || raw[`title__i18n__${lang}`] : null;
+    const label = translatedLabel || raw.name || raw.title || id;
+    if (id == null) return { value: "", label: "" };
+    const value2 = String(id);
+    return { value: value2, label: label != null ? String(label) : value2 };
+  }
+  const value = String(raw).trim();
+  const enumLabels = (_a = fieldLabels == null ? void 0 : fieldLabels[field]) == null ? void 0 : _a.enumLabels;
+  if (value && enumLabels) {
+    const i18n = fieldLabels[field].enumLabelsI18n;
+    if (lang && lang !== defaultLang && ((_b = i18n == null ? void 0 : i18n[value]) == null ? void 0 : _b[lang])) return { value, label: i18n[value][lang] };
+    if (enumLabels[value]) return { value, label: enumLabels[value] };
+  }
+  return { value, label: value };
+}
+
+// src/DynamicContentGrid.jsx
+import { Fragment as Fragment2, jsx as jsx3, jsxs as jsxs3 } from "react/jsx-runtime";
+function trunc(s, n = 120) {
+  const str = String(s ?? "");
+  return str.length > n ? str.slice(0, n) + "\u2026" : str;
+}
+function fmtDate(v, locale = "nl-NL") {
+  try {
+    return new Date(v).toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" });
+  } catch {
+    return String(v);
+  }
+}
+function getByPath(item, path, lang, defaultLang) {
+  if (!item || !path) return "";
+  const parts = path.split(".");
+  let cur = item;
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (cur == null || typeof cur !== "object") return "";
+    cur = cur[parts[i]];
+  }
+  if (cur == null || typeof cur !== "object") return "";
+  const lastKey = parts[parts.length - 1];
+  if (lang && lang !== defaultLang) {
+    const translated = cur[`${lastKey}__i18n__${lang}`];
+    if (translated != null && translated !== "") return translated;
+  }
+  return cur[lastKey] ?? "";
+}
 function slotValue(item, fieldMap, slot, lang, defaultLang, { single = false } = {}) {
   const path = fieldMap[slot];
   if (!path) return "";
@@ -1277,26 +1299,6 @@ function summaryText(raw) {
   const text = String(raw ?? "").replace(/\s+/g, " ").trim();
   if (text.length <= 140) return text;
   return (text.match(/[^.!?]+(?:[.!?]+|$)\s*/g) ?? [text]).slice(0, 2).join("").trim();
-}
-function resolveOptionValue(raw, field, lang, defaultLang, fieldLabels) {
-  var _a, _b;
-  if (raw == null || raw === "") return { value: "", label: "" };
-  if (typeof raw === "object" && !Array.isArray(raw)) {
-    const id = raw.id ?? raw.name ?? raw.title;
-    const translatedLabel = lang && lang !== defaultLang ? raw[`name__i18n__${lang}`] || raw[`title__i18n__${lang}`] : null;
-    const label = translatedLabel || raw.name || raw.title || id;
-    if (id == null) return { value: "", label: "" };
-    const value2 = String(id);
-    return { value: value2, label: label != null ? String(label) : value2 };
-  }
-  const value = String(raw).trim();
-  const enumLabels = (_a = fieldLabels == null ? void 0 : fieldLabels[field]) == null ? void 0 : _a.enumLabels;
-  if (value && enumLabels) {
-    const i18n = fieldLabels[field].enumLabelsI18n;
-    if (lang && lang !== defaultLang && ((_b = i18n == null ? void 0 : i18n[value]) == null ? void 0 : _b[lang])) return { value, label: i18n[value][lang] };
-    if (enumLabels[value]) return { value, label: enumLabels[value] };
-  }
-  return { value, label: value };
 }
 function featureText(item, field, fieldLabels, lang, defaultLang) {
   var _a;
@@ -1736,8 +1738,70 @@ function DynamicContentGrid({
   ] });
 }
 
+// src/orderItems.js
+var ORDER_KINDS = ["text", "number", "date"];
+var ISO_DATE = /^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}.*)?$/;
+function slotRaw(item, path, pick, lang, defaultLang) {
+  const values = valuesByPath(item, path, lang, defaultLang);
+  const filled = values.filter(hasValue);
+  switch (pick.mode) {
+    case "last":
+      return values[values.length - 1];
+    case "random":
+      return filled.length ? filled[stableIndex(item, filled.length)] : void 0;
+    case "all":
+      return filled[0];
+    default:
+      return values[0];
+  }
+}
+var isDateLike = (v) => v instanceof Date || typeof v === "string" && ISO_DATE.test(v.trim()) && !Number.isNaN(Date.parse(v));
+function inferKind(raws) {
+  const filled = raws.filter(hasValue);
+  if (filled.length === 0) return "text";
+  if (filled.every((v) => typeof v === "number" || typeof v === "boolean")) return "number";
+  if (filled.every(isDateLike)) return "date";
+  return "text";
+}
+function sortKey(raw, kind, path, lang, defaultLang, fieldLabels) {
+  if (raw == null || raw === "") return null;
+  if (kind === "number") {
+    if (typeof raw === "object") return null;
+    const n = Number(raw);
+    return Number.isNaN(n) ? null : n;
+  }
+  if (kind === "date") {
+    const t = raw instanceof Date ? raw.getTime() : typeof raw === "object" ? NaN : Date.parse(String(raw));
+    return Number.isNaN(t) ? null : t;
+  }
+  const label = resolveOptionValue(raw, path, lang, defaultLang, fieldLabels).label;
+  return label ? label : null;
+}
+function collatorFor(lang) {
+  try {
+    return new Intl.Collator(lang || void 0, { sensitivity: "base" });
+  } catch {
+    return new Intl.Collator(void 0, { sensitivity: "base" });
+  }
+}
+function orderItems(items, order, fieldMap, { lang, defaultLang, fieldLabels } = {}) {
+  const slot = order == null ? void 0 : order.slot;
+  const path = slot ? fieldMap == null ? void 0 : fieldMap[slot] : null;
+  if (!Array.isArray(items) || !path) return items;
+  const pick = parsePick(fieldMap[`${slot}Pick`]);
+  const raws = items.map((item) => slotRaw(item, path, pick, lang, defaultLang));
+  const kind = ORDER_KINDS.includes(order.kind) ? order.kind : inferKind(raws);
+  const direction = order.dir === "desc" ? -1 : 1;
+  const collator = collatorFor(lang || defaultLang);
+  const compare = kind === "text" ? (a, b) => collator.compare(a, b) : (a, b) => a - b;
+  return items.map((item, index) => ({ item, index, key: sortKey(raws[index], kind, path, lang, defaultLang, fieldLabels) })).sort((x, y) => {
+    if (x.key == null || y.key == null) return x.key == null && y.key == null ? x.index - y.index : x.key == null ? 1 : -1;
+    return direction * compare(x.key, y.key) || x.index - y.index;
+  }).map((entry) => entry.item);
+}
+
 // src/version.js
-var SHARED_UI_VERSION = true ? "0.7.5" : "dev";
+var SHARED_UI_VERSION = true ? "0.7.6" : "dev";
 
 // src/dtcg.js
 import { parse, build, defineConfig } from "@terrazzo/parser";
@@ -1897,10 +1961,12 @@ export {
   CHAT_STRINGS,
   ChatInterface_default as ChatInterface,
   DynamicContentGrid,
+  ORDER_KINDS,
   SHARED_UI_VERSION,
   STARTER_ICONS,
   buildDesignTokensCss,
   contrastTextColor,
+  orderItems,
   resolveDesignTokens
 };
 //# sourceMappingURL=index.js.map

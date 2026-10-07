@@ -13,6 +13,22 @@ the one you're actively working on. Forgetting one leaves it silently rendering 
 stale build with no error — check its installed version against this file with
 `grep '"version"' node_modules/stappie-shared-ui/package.json`.
 
+## 0.7.6 — 2026-10-07
+
+**Ordering a dynamic block's items.** New export `orderItems(items, orderBy, fieldMap, { lang, defaultLang, fieldLabels })`:
+the author picks one of the card's connected fields (a slot) as the field to order by, ascending or descending
+(`block.orderBy = { slot, dir, kind }`), and each app's thin wrapper (admin `DynamicBlockPreview`, mini_site
+`DynamicBlockClient`) calls it before drawing the grid. `DynamicContentGrid` itself is unchanged: it keeps the order it is given.
+
+- An item is ordered by the value its **card shows** for that slot — the same path through populated references and arrays, the
+  same per-slot "which one" (`<slot>Pick`) and, for text, the same translated label — so a list reads in the order it is sorted.
+- `kind` `number` and `date` order numerically (a date by its moment in time, a boolean as 1/0); `text` alphabetically by the
+  page's language (capitals and accents ignored). Without a `kind` it is read off the values.
+- An item with nothing to order by comes last, whichever way it goes; items that compare equal keep their order.
+- Internal: the pure slot helpers (`valuesByPath`, `parsePick`, `stableIndex`, `asText`, `hasValue`, `resolveOptionValue`) moved
+  verbatim from `DynamicContentGrid.jsx` into `src/slotValues.js`, so the card and the ordering share one implementation.
+- Tests: `npm test` (node's built-in runner, `src/orderItems.test.js`).
+
 ## 0.7.5 — 2026-10-07
 
 `DynamicContentGrid`: **the filter state lives in the URL**, so a search can be bookmarked and shared, and survives
