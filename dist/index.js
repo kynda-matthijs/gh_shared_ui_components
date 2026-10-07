@@ -1154,7 +1154,7 @@ var ChatInterface = forwardRef(function ChatInterface2({
 var ChatInterface_default = ChatInterface;
 
 // src/DynamicContentGrid.jsx
-import { useState as useState2, useEffect as useEffect2, useRef as useRef2 } from "react";
+import { useState as useState2, useEffect as useEffect2, useRef as useRef2, useId as useId2 } from "react";
 import { Image as ImageIcon, User as UserIcon, Folder as FolderIcon } from "lucide-react";
 
 // src/filterUrlState.js
@@ -1481,8 +1481,18 @@ function PreviewCard({ item, design, fieldMap, collection, detailUrlBuilder, dat
       return /* @__PURE__ */ jsx3("div", { className: "sui-dyn-body sui-dyn-body-full", children: /* @__PURE__ */ jsx3("h3", { children: item.name ?? item.title ?? String(item.id ?? "\u2014") }) });
   }
 }
+function openSelect(select) {
+  var _a;
+  if (!select || select.disabled) return;
+  select.focus();
+  try {
+    (_a = select.showPicker) == null ? void 0 : _a.call(select);
+  } catch {
+  }
+}
 function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFilters, setSearchTerm, hasActive, onReset, strings, lang, defaultLang, fieldLabels, debug }) {
   const fb = filterBar ?? {};
+  const uid = useId2();
   const hasSearch = fb.searchEnabled;
   const sortedFilters = (fb.filters ?? []).filter((f) => f.field).slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   if (!hasSearch && sortedFilters.length === 0) return null;
@@ -1492,11 +1502,25 @@ function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFi
       if (options.length <= 1) return null;
       const selected = activeFilters[filterDef.field] ?? [];
       const label = lang && lang !== defaultLang && filterDef[`label__i18n__${lang}`] || filterDef.label || filterDef.field;
+      const selectId = `${uid}-${filterDef.id}`;
       return /* @__PURE__ */ jsxs3("div", { className: "sui-dyn-filter-group", children: [
-        /* @__PURE__ */ jsx3("span", { className: "sui-dyn-filter-label", children: label }),
+        filterDef.type === "select" ? /* @__PURE__ */ jsx3(
+          "label",
+          {
+            className: "sui-dyn-filter-label",
+            htmlFor: selectId,
+            onClick: (e) => {
+              var _a;
+              e.preventDefault();
+              openSelect((_a = e.currentTarget.parentElement) == null ? void 0 : _a.querySelector("select"));
+            },
+            children: label
+          }
+        ) : /* @__PURE__ */ jsx3("span", { className: "sui-dyn-filter-label", children: label }),
         filterDef.type === "select" ? /* @__PURE__ */ jsxs3(
           "select",
           {
+            id: selectId,
             className: "sui-dyn-filter-select",
             value: selected[0] ?? "",
             onChange: (e) => setActiveFilters((prev) => ({ ...prev, [filterDef.field]: e.target.value ? [e.target.value] : [] })),
@@ -1801,7 +1825,7 @@ function orderItems(items, order, fieldMap, { lang, defaultLang, fieldLabels } =
 }
 
 // src/version.js
-var SHARED_UI_VERSION = true ? "0.7.6" : "dev";
+var SHARED_UI_VERSION = true ? "0.7.7" : "dev";
 
 // src/dtcg.js
 import { parse, build, defineConfig } from "@terrazzo/parser";

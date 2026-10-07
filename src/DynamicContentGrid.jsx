@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useId } from 'react';
 import { Image as ImageIcon, User as UserIcon, Folder as FolderIcon } from 'lucide-react';
 import ActionButtons from './ActionButtons.jsx';
 import { readFilterState, writeFilterState, canonicalFilterState } from './filterUrlState.js';
@@ -324,8 +324,19 @@ function PreviewCard({ item, design, fieldMap, collection, detailUrlBuilder, dat
     }
 }
 
+// Opens a native <select> the way a click on it would: focus it, then its list of options where the browser lets a script do that
+// (HTMLSelectElement.showPicker — Chrome and Edge 121+, Firefox, Safari 17+). Older browsers still get the focus, which is what a
+// click on a <label> alone gives them.
+function openSelect(select) {
+    if (!select || select.disabled) return;
+    select.focus();
+    try { select.showPicker?.(); } catch { /* a script may not open it here (a frame it may not control): the focus stays */ }
+}
+
 function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFilters, setSearchTerm, hasActive, onReset, strings, lang, defaultLang, fieldLabels, debug }) {
     const fb = filterBar ?? {};
+    // each pill's select gets an id of its own, so its label can point at it (two grids on a page may reuse a filter's id)
+    const uid = useId();
     const hasSearch = fb.searchEnabled;
     const sortedFilters = (fb.filters ?? []).filter(f => f.field).slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     if (!hasSearch && sortedFilters.length === 0) return null;
@@ -345,11 +356,17 @@ function FilterBar({ allItems, filterBar, activeFilters, searchTerm, setActiveFi
                 const label = (lang && lang !== defaultLang && filterDef[`label__i18n__${lang}`])
                     || filterDef.label
                     || filterDef.field;
+                const selectId = `${uid}-${filterDef.id}`;
                 return (
                     <div key={filterDef.id} className="sui-dyn-filter-group">
-                        <span className="sui-dyn-filter-label">{label}</span>
+                        {/* The label of a dropdown pill IS the select's label: a click on it opens the select, as a click on the select
+                            itself does (preventDefault: the browser's own label→control click would only focus it). */}
+                        {filterDef.type === 'select'
+                            ? <label className="sui-dyn-filter-label" htmlFor={selectId}
+                                onClick={(e) => { e.preventDefault(); openSelect(e.currentTarget.parentElement?.querySelector('select')); }}>{label}</label>
+                            : <span className="sui-dyn-filter-label">{label}</span>}
                         {filterDef.type === 'select' ? (
-                            <select className="sui-dyn-filter-select" value={selected[0] ?? ''}
+                            <select id={selectId} className="sui-dyn-filter-select" value={selected[0] ?? ''}
                                 onChange={e => setActiveFilters(prev => ({ ...prev, [filterDef.field]: e.target.value ? [e.target.value] : [] }))}>
                                 <option value="">{strings.all}</option>
                                 {options.map(o => (

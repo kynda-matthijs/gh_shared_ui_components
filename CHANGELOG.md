@@ -13,6 +13,17 @@ the one you're actively working on. Forgetting one leaves it silently rendering 
 stale build with no error — check its installed version against this file with
 `grep '"version"' node_modules/stappie-shared-ui/package.json`.
 
+## 0.7.7 — 2026-10-07
+
+`DynamicContentGrid` filter bar: **the label of a dropdown pill is the select's label.** In "Deelgebied: Alles" the words
+"Deelgebied" are now a real `<label>` tied to the pill's `<select>` — a click on them opens the select exactly as a click on the
+select itself does (focus, then its list of options via `showPicker()`; a browser without `showPicker` still gets the focus).
+It also gives the select its accessible name, which it did not have. The label looks clickable (`cursor: pointer`, in
+`block-styles.css`). Only the dropdown ("select") filter type: a checkbox or radio group keeps its plain caption.
+
+- Each select gets an id of its own from `useId()`, so two grids on one page that reuse a filter's id do not point their labels at
+  each other's select.
+
 ## 0.7.6 — 2026-10-07
 
 **Ordering a dynamic block's items.** New export `orderItems(items, orderBy, fieldMap, { lang, defaultLang, fieldLabels })`:
