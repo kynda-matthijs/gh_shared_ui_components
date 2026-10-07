@@ -44,6 +44,37 @@ function getByPath(item, path, lang, defaultLang) {
     return cur[lastKey] ?? '';
 }
 
+/**
+ * getByPath, except that a path running through an ARRAY reads its first element: "categories.image" is the
+ * main category's drawing (a service's first category is its main one). An explicit index ("categories.0.image")
+ * works with plain getByPath as well — this only adds the shorthand the editor's field picker offers.
+ */
+function getFirstByPath(item, path, lang, defaultLang) {
+    if (!item || !path) return '';
+    const parts = path.split('.');
+    const isIndex = (key) => /^\d+$/.test(key);
+    let cur = item;
+    for (let i = 0; i < parts.length - 1; i++) {
+        if (Array.isArray(cur) && !isIndex(parts[i])) cur = cur[0];
+        if (cur == null || typeof cur !== 'object') return '';
+        cur = cur[parts[i]];
+    }
+    const last = parts[parts.length - 1];
+    if (Array.isArray(cur) && !isIndex(last)) cur = cur[0];
+    return getByPath(cur, last, lang, defaultLang);
+}
+
+// A populated reference ({id, name, ...}) shown as text: its name/title; anything else as plain text.
+const asText = (v) => (v != null && typeof v === 'object' ? String(v.name ?? v.title ?? '') : String(v ?? '')).trim();
+
+// The service card's short description. A value that is already short is shown as it is; a longer one (the
+// full description) is cut to its first two sentences. The card clamps what is left to 3 lines.
+function summaryText(raw) {
+    const text = String(raw ?? '').replace(/\s+/g, ' ').trim();
+    if (text.length <= 140) return text;
+    return (text.match(/[^.!?]+(?:[.!?]+|$)\s*/g) ?? [text]).slice(0, 2).join('').trim();
+}
+
 // Resolves ONE already-extracted raw value (never an array itself — resolveFilterOptions,
 // below, is what unwraps an array field into one call per element) into its {value, label}
 // filter-option shape. Two cases beyond the plain-scalar fallthrough:
@@ -94,6 +125,23 @@ function resolveOptionValue(raw, field, lang, defaultLang, fieldLabels) {
         if (enumLabels[value]) return { value, label: enumLabels[value] };
     }
     return { value, label: value };
+}
+
+// One entry of the service card's feature row ("16 tot 27 jaar", "Gratis", "Inloopmogelijkheid"): an enum shows
+// its schema label, an array of enums is joined, a true boolean reads as the field's own label (the schema's
+// Ja/Nee pair says nothing on a chip), and a false or unset value is not shown at all — "alleen wat bekend is".
+function featureText(item, field, fieldLabels, lang, defaultLang) {
+    if (!field) return '';
+    const raw = getByPath(item, field, lang, defaultLang);
+    if (raw === true) {
+        const fl = fieldLabels?.[field];
+        return String((lang && lang !== defaultLang && fl?.labelI18n?.[lang]) || fl?.label || field);
+    }
+    if (raw === false || raw == null || raw === '') return '';
+    return (Array.isArray(raw) ? raw : [raw])
+        .map((el) => resolveOptionValue(el, field, lang, defaultLang, fieldLabels).label)
+        .filter(Boolean)
+        .join(', ');
 }
 
 // Resolves a filter field against one item into a LIST of {value, label} options — zero
@@ -228,13 +276,34 @@ function buildMoreInfoUrl(item, fieldMap) {
         .replace(/\{\{slug\}\}/g, String(item.slug ?? item.id ?? ''));
 }
 
-function PreviewCard({ item, design, fieldMap, collection, detailUrlBuilder, dateLocale, strings, lang, defaultLang }) {
+function PreviewCard({ item, design, fieldMap, collection, detailUrlBuilder, dateLocale, strings, lang, defaultLang, fieldLabels }) {
     const g = (slot) => {
         const field = fieldMap[slot];
         return field ? getByPath(item, field, lang, defaultLang) : '';
     };
 
     switch (design) {
+        // The design team's service card: the main category's drawing, the name, "organisation · area", a short
+        // description (3 lines at most) and, pinned to the bottom, a row of up to 3 known features. Every slot
+        // reads the first element of an array on its path (see getFirstByPath), and an empty one is left out.
+        case 'service-card': {
+            const first = (slot) => (fieldMap[slot] ? getFirstByPath(item, fieldMap[slot], lang, defaultLang) : '');
+            const drawing = asText(first('image'));
+            const meta = [first('meta1'), first('meta2')].map(asText).filter(Boolean).join(' \u00b7 ');
+            const summary = summaryText(first('summary'));
+            const features = ['feature1', 'feature2', 'feature3']
+                .map((slot) => featureText(item, fieldMap[slot], fieldLabels, lang, defaultLang))
+                .filter(Boolean).slice(0, 3).join(' \u00b7 ');
+            return (
+                <>
+                    {drawing && <img className="sui-dyn-card-icon" src={drawing} alt="" loading="lazy" />}
+                    <h3>{asText(first('heading')) || item.name || item.title || '\u2014'}</h3>
+                    {meta && <div className="sui-dyn-card-meta">{meta}</div>}
+                    {summary && <div className="sui-dyn-card-summary">{summary}</div>}
+                    {features && <div className="sui-dyn-card-features">{features}</div>}
+                </>
+            );
+        }
         case 'image-card':
             return (
                 <>
@@ -499,7 +568,7 @@ export default function DynamicContentGrid({
                         const Wrap = href ? 'a' : 'article';
                         return (
                             <Wrap key={item.id ?? item.name} className={`sui-dyn-card sui-dyn-card-${cardDesign}`} {...(href ? { href } : {})}>
-                                <PreviewCard item={item} design={cardDesign} fieldMap={fieldMap} collection={collection} detailUrlBuilder={detailUrlBuilder} dateLocale={dateLocale} strings={strings} lang={lang} defaultLang={defaultLang} />
+                                <PreviewCard item={item} design={cardDesign} fieldMap={fieldMap} collection={collection} detailUrlBuilder={detailUrlBuilder} dateLocale={dateLocale} strings={strings} lang={lang} defaultLang={defaultLang} fieldLabels={fieldLabels} />
                             </Wrap>
                         );
                     })}

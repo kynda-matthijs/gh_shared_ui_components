@@ -138,13 +138,21 @@
 }
 .sui-dyn-filter-select:focus { border-color: var(--accent, #6366f1); }
 
-/* "Filters wissen": the last item INSIDE the filter bar, pushed to its right end — never positioned out of the bar
-   (it used to be pinned to the layout's bottom-right corner, i.e. below the results). */
+/* "Filters wissen": the last item INSIDE the filter bar — a plain flex item, never positioned out of the bar (it
+   used to be pinned to the layout's bottom-right corner, i.e. below the results). */
 .sui-dyn-reset-btn {
-    margin-left: auto; align-self: center;
     font-size: calc(0.78rem * var(--font-scale, 1)); color: var(--accent, #6366f1); background: none; border: none;
     cursor: pointer; padding: 0.25rem; text-decoration: underline; font-family: inherit;
 }
+
+/* The service card (cardDesign "service-card"): drawing, name, "organisation · area", short description, features. */
+.sui-dyn-card-service-card { padding: 1.25rem; align-self: stretch; }
+.sui-dyn-card-service-card .sui-dyn-card-icon { width: 48px; height: 48px; object-fit: contain; object-position: left center; margin-bottom: 0.75rem; }
+.sui-dyn-card-service-card h3 { margin: 0 0 0.5rem; font-size: calc(1.1rem * var(--font-scale, 1)); }
+.sui-dyn-card-meta, .sui-dyn-card-features { font-size: calc(0.875rem * var(--font-scale, 1)); color: var(--text-muted, #6b7280); }
+.sui-dyn-card-meta { margin-bottom: 0.25rem; }
+.sui-dyn-card-summary { font-size: calc(0.875rem * var(--font-scale, 1)); margin-bottom: 0.875rem; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.sui-dyn-card-features { margin-top: auto; border-top: 1px solid var(--border, #e5e7eb); padding-top: 0.75rem; }
 
 /* "7 results" — between the filter bar and the results */
 .sui-dyn-result-count { margin: 0 0 1rem; font-size: calc(0.875rem * var(--font-scale, 1)); color: var(--text-muted, #6b7280); }

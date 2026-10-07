@@ -56,7 +56,7 @@ const LANGS = ['nl', 'en', 'fr', 'de', 'es', 'pt', 'pl', 'tr', 'ru', 'ar', 'zh']
 
 // Every design DynamicContentGrid's PreviewCard switch actually handles — see its own
 // `switch (design)` for the authoritative list.
-const CARD_DESIGNS = ['image-card', 'compact-card', 'stat-card', 'person-card', 'contact-card', 'document-card'];
+const CARD_DESIGNS = ['image-card', 'service-card', 'compact-card', 'stat-card', 'person-card', 'contact-card', 'document-card'];
 
 export default function App() {
     const saved = loadSaved();

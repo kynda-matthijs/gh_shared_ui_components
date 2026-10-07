@@ -1184,6 +1184,26 @@ function getByPath(item, path, lang, defaultLang) {
   }
   return cur[lastKey] ?? "";
 }
+function getFirstByPath(item, path, lang, defaultLang) {
+  if (!item || !path) return "";
+  const parts = path.split(".");
+  const isIndex = (key) => /^\d+$/.test(key);
+  let cur = item;
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (Array.isArray(cur) && !isIndex(parts[i])) cur = cur[0];
+    if (cur == null || typeof cur !== "object") return "";
+    cur = cur[parts[i]];
+  }
+  const last = parts[parts.length - 1];
+  if (Array.isArray(cur) && !isIndex(last)) cur = cur[0];
+  return getByPath(cur, last, lang, defaultLang);
+}
+var asText = (v) => (v != null && typeof v === "object" ? String(v.name ?? v.title ?? "") : String(v ?? "")).trim();
+function summaryText(raw) {
+  const text = String(raw ?? "").replace(/\s+/g, " ").trim();
+  if (text.length <= 140) return text;
+  return (text.match(/[^.!?]+(?:[.!?]+|$)\s*/g) ?? [text]).slice(0, 2).join("").trim();
+}
 function resolveOptionValue(raw, field, lang, defaultLang, fieldLabels) {
   var _a, _b;
   if (raw == null || raw === "") return { value: "", label: "" };
@@ -1203,6 +1223,17 @@ function resolveOptionValue(raw, field, lang, defaultLang, fieldLabels) {
     if (enumLabels[value]) return { value, label: enumLabels[value] };
   }
   return { value, label: value };
+}
+function featureText(item, field, fieldLabels, lang, defaultLang) {
+  var _a;
+  if (!field) return "";
+  const raw = getByPath(item, field, lang, defaultLang);
+  if (raw === true) {
+    const fl = fieldLabels == null ? void 0 : fieldLabels[field];
+    return String(lang && lang !== defaultLang && ((_a = fl == null ? void 0 : fl.labelI18n) == null ? void 0 : _a[lang]) || (fl == null ? void 0 : fl.label) || field);
+  }
+  if (raw === false || raw == null || raw === "") return "";
+  return (Array.isArray(raw) ? raw : [raw]).map((el) => resolveOptionValue(el, field, lang, defaultLang, fieldLabels).label).filter(Boolean).join(", ");
 }
 function resolveFilterOptions(item, field, lang, defaultLang, fieldLabels) {
   const raw = getByPath(item, field, lang, defaultLang);
@@ -1287,12 +1318,29 @@ function buildMoreInfoUrl(item, fieldMap) {
   if (!pattern) return "";
   return pattern.replace(/\{\{id\}\}/g, String(item.id ?? "")).replace(/\{\{slug\}\}/g, String(item.slug ?? item.id ?? ""));
 }
-function PreviewCard({ item, design, fieldMap, collection, detailUrlBuilder, dateLocale, strings, lang, defaultLang }) {
+function PreviewCard({ item, design, fieldMap, collection, detailUrlBuilder, dateLocale, strings, lang, defaultLang, fieldLabels }) {
   const g = (slot) => {
     const field = fieldMap[slot];
     return field ? getByPath(item, field, lang, defaultLang) : "";
   };
   switch (design) {
+    // The design team's service card: the main category's drawing, the name, "organisation · area", a short
+    // description (3 lines at most) and, pinned to the bottom, a row of up to 3 known features. Every slot
+    // reads the first element of an array on its path (see getFirstByPath), and an empty one is left out.
+    case "service-card": {
+      const first = (slot) => fieldMap[slot] ? getFirstByPath(item, fieldMap[slot], lang, defaultLang) : "";
+      const drawing = asText(first("image"));
+      const meta = [first("meta1"), first("meta2")].map(asText).filter(Boolean).join(" \xB7 ");
+      const summary = summaryText(first("summary"));
+      const features = ["feature1", "feature2", "feature3"].map((slot) => featureText(item, fieldMap[slot], fieldLabels, lang, defaultLang)).filter(Boolean).slice(0, 3).join(" \xB7 ");
+      return /* @__PURE__ */ jsxs3(Fragment2, { children: [
+        drawing && /* @__PURE__ */ jsx3("img", { className: "sui-dyn-card-icon", src: drawing, alt: "", loading: "lazy" }),
+        /* @__PURE__ */ jsx3("h3", { children: asText(first("heading")) || item.name || item.title || "\u2014" }),
+        meta && /* @__PURE__ */ jsx3("div", { className: "sui-dyn-card-meta", children: meta }),
+        summary && /* @__PURE__ */ jsx3("div", { className: "sui-dyn-card-summary", children: summary }),
+        features && /* @__PURE__ */ jsx3("div", { className: "sui-dyn-card-features", children: features })
+      ] });
+    }
     case "image-card":
       return /* @__PURE__ */ jsxs3(Fragment2, { children: [
         /* @__PURE__ */ jsx3("div", { className: "sui-dyn-img", children: /* @__PURE__ */ jsx3(CardImage, { src: g("image") }) }),
@@ -1515,7 +1563,7 @@ function DynamicContentGrid({
     !loading && !error && displayItems.length > 0 && /* @__PURE__ */ jsx3("div", { className: "sui-dyn-grid", style: { "--sui-dyn-cols": Math.min(cols, 6) }, children: displayItems.map((item) => {
       const href = cardDesign === "contact-card" ? "" : buildHref(item);
       const Wrap = href ? "a" : "article";
-      return /* @__PURE__ */ jsx3(Wrap, { className: `sui-dyn-card sui-dyn-card-${cardDesign}`, ...href ? { href } : {}, children: /* @__PURE__ */ jsx3(PreviewCard, { item, design: cardDesign, fieldMap, collection, detailUrlBuilder, dateLocale, strings, lang, defaultLang }) }, item.id ?? item.name);
+      return /* @__PURE__ */ jsx3(Wrap, { className: `sui-dyn-card sui-dyn-card-${cardDesign}`, ...href ? { href } : {}, children: /* @__PURE__ */ jsx3(PreviewCard, { item, design: cardDesign, fieldMap, collection, detailUrlBuilder, dateLocale, strings, lang, defaultLang, fieldLabels }) }, item.id ?? item.name);
     }) })
   ] });
   return /* @__PURE__ */ jsxs3("section", { className: "sui-dyn-wrap", children: [
@@ -1571,7 +1619,7 @@ function DynamicContentGrid({
 }
 
 // src/version.js
-var SHARED_UI_VERSION = true ? "0.7.2" : "dev";
+var SHARED_UI_VERSION = true ? "0.7.3" : "dev";
 
 // src/dtcg.js
 import { parse, build, defineConfig } from "@terrazzo/parser";

@@ -13,6 +13,24 @@ the one you're actively working on. Forgetting one leaves it silently rendering 
 stale build with no error — check its installed version against this file with
 `grep '"version"' node_modules/stappie-shared-ui/package.json`.
 
+## 0.7.3 — 2026-10-07
+
+`DynamicContentGrid`: the design team's **service card**, as a new `cardDesign` — `service-card`. The existing
+card designs are unchanged.
+
+- **Markup** (the mockup's card): `img.sui-dyn-card-icon` · `h3` · `.sui-dyn-card-meta` ("organisation · area") ·
+  `.sui-dyn-card-summary` · `.sui-dyn-card-features`; the whole card is the link. A part with no value is left out.
+- **Slots** (`fieldMap`): `image`, `heading`, `meta1`, `meta2`, `summary`, `feature1`–`feature3`, `detailUrl`.
+  A path that runs through an array reads its **first element** — `image: "categories.image"` is the main category's
+  drawing (a service's first category is its main one); `categories.0.image` works too.
+- **Short description:** a value of 140 characters or less is shown as it is, a longer one (the full description)
+  is cut to its first two sentences; the CSS clamps it to 3 lines.
+- **Feature row:** at most 3 known features joined with " · ". An enum shows its schema label (`cost: free` →
+  "Gratis", `ageGroups` joined), a true boolean shows the field's own label, a false/unset one is left out. Uses the
+  `fieldLabels` prop the filters already use.
+- Styling is the consumer's: block-styles.css ("Service card") reads `component.card` from the design tokens.
+  The playground's `src/styles.css` has a plain version.
+
 ## 0.7.2 — 2026-10-06
 
 Two more filter bar changes from the design team's mockup.
@@ -28,10 +46,11 @@ Two more filter bar changes from the design team's mockup.
   "choose a filter first" state. It is a `role="status"` line, so a screen reader announces the new count.
 - **"Filters wissen" is never below the results.** `src/styles.css` (the playground's stylesheet) still
   pinned `.sui-dyn-reset-btn` with `position: absolute; bottom: 0; right: 0`, which — with the button now
-  inside the bar — put it at the layout's bottom-right corner, under the results. It is an ordinary item
-  at the bar's right end now. The consumers' block-styles.css does the same for a UI still on 0.7.0 (where
-  the button is a sibling of the layout): it is pinned to the top bar's top-right corner, inside the bar,
-  instead of under the results (this replaces the 0.7.1 note above that it stays below the results).
+  inside the bar — put it at the layout's bottom-right corner, under the results. It is a plain flex item
+  now: the bar's last item, right after the search field, and on its own row once the bar wraps or stacks.
+  The consumers' block-styles.css no longer carries the old below-the-results placement rules either (every
+  consumer renders the link inside the bar from 0.7.1 on); this replaces the 0.7.1 note above that a
+  consumer still on 0.7.0 shows it below the results.
 
 ## 0.7.1 — 2026-10-06
 
