@@ -1154,8 +1154,46 @@ var ChatInterface = forwardRef(function ChatInterface2({
 var ChatInterface_default = ChatInterface;
 
 // src/DynamicContentGrid.jsx
-import { useState as useState2 } from "react";
+import { useState as useState2, useEffect as useEffect2, useRef as useRef2 } from "react";
 import { Image as ImageIcon, User as UserIcon, Folder as FolderIcon } from "lucide-react";
+
+// src/filterUrlState.js
+var SEARCH_PARAM = "q";
+var MAX_SEARCH_LENGTH = 200;
+var isSingle = (filter) => filter.type === "select" || filter.type === "radio";
+function readFilterState(search, filters, { searchEnabled = false, prefix = "" } = {}) {
+  const params = new URLSearchParams(search);
+  const activeFilters = {};
+  for (const filter of filters) {
+    if (!filter.field) continue;
+    const values = params.getAll(prefix + filter.field).map((v) => v.trim()).filter(Boolean);
+    if (values.length) activeFilters[filter.field] = isSingle(filter) ? values.slice(0, 1) : [...new Set(values)];
+  }
+  const searchTerm = searchEnabled ? (params.get(prefix + SEARCH_PARAM) ?? "").slice(0, MAX_SEARCH_LENGTH) : "";
+  return { activeFilters, searchTerm };
+}
+function writeFilterState(href, filters, activeFilters, searchTerm, { prefix = "" } = {}) {
+  const url = new URL(href);
+  for (const filter of filters) if (filter.field) url.searchParams.delete(prefix + filter.field);
+  url.searchParams.delete(prefix + SEARCH_PARAM);
+  for (const filter of filters) {
+    if (!filter.field) continue;
+    for (const value of activeFilters[filter.field] ?? []) url.searchParams.append(prefix + filter.field, value);
+  }
+  if (searchTerm) url.searchParams.set(prefix + SEARCH_PARAM, searchTerm);
+  return url.pathname + url.search + url.hash;
+}
+function canonicalFilterState(activeFilters, universe) {
+  const out = {};
+  for (const [field, values] of Object.entries(activeFilters)) {
+    const byLower = new Map((universe[field] ?? []).map((v) => [String(v).toLowerCase(), v]));
+    const kept = [...new Set(values.map((v) => byLower.get(String(v).toLowerCase())).filter((v) => v !== void 0))];
+    if (kept.length) out[field] = kept;
+  }
+  return out;
+}
+
+// src/DynamicContentGrid.jsx
 import { Fragment as Fragment2, jsx as jsx3, jsxs as jsxs3 } from "react/jsx-runtime";
 function trunc(s, n = 120) {
   const str = String(s ?? "");
@@ -1184,21 +1222,57 @@ function getByPath(item, path, lang, defaultLang) {
   }
   return cur[lastKey] ?? "";
 }
-function getFirstByPath(item, path, lang, defaultLang) {
-  if (!item || !path) return "";
+var isIndex = (key) => /^\d+$/.test(key);
+function valuesByPath(item, path, lang, defaultLang) {
+  if (!item || !path) return [];
   const parts = path.split(".");
-  const isIndex = (key) => /^\d+$/.test(key);
-  let cur = item;
-  for (let i = 0; i < parts.length - 1; i++) {
-    if (Array.isArray(cur) && !isIndex(parts[i])) cur = cur[0];
-    if (cur == null || typeof cur !== "object") return "";
-    cur = cur[parts[i]];
-  }
-  const last = parts[parts.length - 1];
-  if (Array.isArray(cur) && !isIndex(last)) cur = cur[0];
-  return getByPath(cur, last, lang, defaultLang);
+  let layer = [item];
+  parts.forEach((part, i) => {
+    const last = i === parts.length - 1;
+    const read = (node) => {
+      if (Array.isArray(node)) return isIndex(part) ? [node[Number(part)]] : node.flatMap(read);
+      if (node == null || typeof node !== "object") return [];
+      let v = node[part];
+      if (last && lang && lang !== defaultLang) {
+        const translated = node[`${part}__i18n__${lang}`];
+        if (translated != null && translated !== "") v = translated;
+      }
+      return [v];
+    };
+    layer = layer.flatMap(read);
+  });
+  return layer.flatMap((v) => Array.isArray(v) ? v : [v]);
 }
 var asText = (v) => (v != null && typeof v === "object" ? String(v.name ?? v.title ?? "") : String(v ?? "")).trim();
+var hasValue = (v) => v != null && v !== "" && !(typeof v === "object" && !asText(v) && !v.image && !v.url);
+function parsePick(raw) {
+  const m = /^(first|last|random|all)(?::(\d+))?$/.exec(String(raw ?? ""));
+  return m ? { mode: m[1], max: m[2] ? Number(m[2]) : null } : { mode: "first", max: null };
+}
+function stableIndex(item, n) {
+  const key = String((item == null ? void 0 : item.id) ?? (item == null ? void 0 : item.name) ?? "");
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = h * 31 + key.charCodeAt(i) >>> 0;
+  return h % n;
+}
+function slotValue(item, fieldMap, slot, lang, defaultLang, { single = false } = {}) {
+  const path = fieldMap[slot];
+  if (!path) return "";
+  const values = valuesByPath(item, path, lang, defaultLang);
+  const { mode, max } = parsePick(fieldMap[`${slot}Pick`]);
+  const filled = values.filter(hasValue);
+  switch (single && mode === "all" ? "first" : mode) {
+    case "last":
+      return values.length ? values[values.length - 1] ?? "" : "";
+    case "random":
+      return filled.length ? filled[stableIndex(item, filled.length)] : "";
+    case "all":
+      return filled.slice(0, max ?? void 0).map(asText).filter(Boolean).join(", ");
+    default:
+      return values[0] ?? "";
+  }
+}
+var imageSource = (v) => (typeof v === "string" ? v : v && typeof v === "object" ? String(v.image ?? v.url ?? "") : "").trim();
 function summaryText(raw) {
   const text = String(raw ?? "").replace(/\s+/g, " ").trim();
   if (text.length <= 140) return text;
@@ -1325,17 +1399,17 @@ function PreviewCard({ item, design, fieldMap, collection, detailUrlBuilder, dat
   };
   switch (design) {
     // The design team's service card: the main category's drawing, the name, "organisation · area", a short
-    // description (3 lines at most) and, pinned to the bottom, a row of up to 3 known features. Every slot
-    // reads the first element of an array on its path (see getFirstByPath), and an empty one is left out.
+    // description (3 lines at most) and, pinned to the bottom, a row of up to 3 known features. A slot whose path
+    // runs through an array shows the value its `<slot>Pick` setting picks (see slotValue); an empty one is left out.
     case "service-card": {
-      const first = (slot) => fieldMap[slot] ? getFirstByPath(item, fieldMap[slot], lang, defaultLang) : "";
-      const drawing = asText(first("image"));
-      const meta = [first("meta1"), first("meta2")].map(asText).filter(Boolean).join(" \xB7 ");
-      const summary = summaryText(first("summary"));
-      const features = ["feature1", "feature2", "feature3"].map((slot) => featureText(item, fieldMap[slot], fieldLabels, lang, defaultLang)).filter(Boolean).slice(0, 3).join(" \xB7 ");
+      const slot = (name, options) => slotValue(item, fieldMap, name, lang, defaultLang, options);
+      const drawing = imageSource(slot("image", { single: true }));
+      const meta = [slot("meta1"), slot("meta2")].map(asText).filter(Boolean).join(" \xB7 ");
+      const summary = summaryText(asText(slot("summary")));
+      const features = ["feature1", "feature2", "feature3"].map((name) => featureText(item, fieldMap[name], fieldLabels, lang, defaultLang)).filter(Boolean).slice(0, 3).join(" \xB7 ");
       return /* @__PURE__ */ jsxs3(Fragment2, { children: [
         drawing && /* @__PURE__ */ jsx3("img", { className: "sui-dyn-card-icon", src: drawing, alt: "", loading: "lazy" }),
-        /* @__PURE__ */ jsx3("h3", { children: asText(first("heading")) || item.name || item.title || "\u2014" }),
+        /* @__PURE__ */ jsx3("h3", { children: asText(slot("heading")) || item.name || item.title || "\u2014" }),
         meta && /* @__PURE__ */ jsx3("div", { className: "sui-dyn-card-meta", children: meta }),
         summary && /* @__PURE__ */ jsx3("div", { className: "sui-dyn-card-summary", children: summary }),
         features && /* @__PURE__ */ jsx3("div", { className: "sui-dyn-card-features", children: features })
@@ -1536,7 +1610,11 @@ function DynamicContentGrid({
   fieldLabels,
   // Admin-only diagnostic toggle — never set true on the published site. See
   // getUniqueValues' own comment for exactly what it logs and why.
-  debug = false
+  debug = false,
+  // Keep the filter state in the page's URL (?categories=12&q=taal) so a search can be bookmarked and shared, and
+  // survives a visit to a card and the way back. Opt-in: the admin's preview must never touch the editor's own URL.
+  // `true`, or a string to namespace the parameters of one grid among several on a page. See filterUrlState.js.
+  urlState = false
 }) {
   const strings = { ...DEFAULT_STRINGS2, ...stringsProp };
   const [activeFilters, setActiveFilters] = useState2({});
@@ -1548,6 +1626,46 @@ function DynamicContentGrid({
     setActiveFilters({});
     setSearchTerm("");
   };
+  const urlSync = Boolean(urlState) && hasFilterBar;
+  const urlPrefix = typeof urlState === "string" && urlState ? `${urlState}.` : "";
+  const urlFilters = (filterBarConfig.filters ?? []).filter((f) => f.field);
+  const [urlRead, setUrlRead] = useState2(false);
+  const urlWrittenSearch = useRef2("");
+  const urlCleaned = useRef2(false);
+  useEffect2(() => {
+    if (!urlSync) return;
+    const fromUrl = readFilterState(window.location.search, urlFilters, { searchEnabled: Boolean(filterBarConfig.searchEnabled), prefix: urlPrefix });
+    if (Object.keys(fromUrl.activeFilters).length) setActiveFilters(fromUrl.activeFilters);
+    if (fromUrl.searchTerm) {
+      setSearchTerm(fromUrl.searchTerm);
+      urlWrittenSearch.current = fromUrl.searchTerm;
+    }
+    setUrlRead(true);
+  }, [urlSync]);
+  useEffect2(() => {
+    if (!urlSync || !urlRead || urlCleaned.current || loading || !items.length) return;
+    urlCleaned.current = true;
+    const universe = Object.fromEntries(urlFilters.map((f) => [f.field, getUniqueValues(items, f.field, lang, defaultLang, fieldLabels).map((o) => o.value)]));
+    setActiveFilters((prev) => canonicalFilterState(prev, universe));
+  }, [urlSync, urlRead, loading, items]);
+  useEffect2(() => {
+    if (!urlSync || !urlRead) return;
+    const typing = searchTerm !== "" && searchTerm !== urlWrittenSearch.current;
+    const write = () => {
+      urlWrittenSearch.current = searchTerm;
+      try {
+        const next = writeFilterState(window.location.href, urlFilters, activeFilters, searchTerm, { prefix: urlPrefix });
+        if (next !== window.location.pathname + window.location.search + window.location.hash) window.history.replaceState(window.history.state, "", next);
+      } catch {
+      }
+    };
+    if (!typing) {
+      write();
+      return void 0;
+    }
+    const timer = setTimeout(write, 300);
+    return () => clearTimeout(timer);
+  }, [activeFilters, searchTerm, urlRead, urlSync]);
   const hideUntilFiltered = hasFilterBar && filterBarConfig.hideUntilFiltered && !hasActive;
   const displayItems = hideUntilFiltered ? [] : applyUserFilters(items, activeFilters, searchTerm, filterBarConfig, lang, defaultLang);
   const countText = hasFilterBar && !loading && !error && !hideUntilFiltered ? resultCountText(displayItems.length, strings, lang, defaultLang) : null;
@@ -1619,7 +1737,7 @@ function DynamicContentGrid({
 }
 
 // src/version.js
-var SHARED_UI_VERSION = true ? "0.7.3" : "dev";
+var SHARED_UI_VERSION = true ? "0.7.5" : "dev";
 
 // src/dtcg.js
 import { parse, build, defineConfig } from "@terrazzo/parser";

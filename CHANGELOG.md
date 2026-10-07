@@ -13,6 +13,42 @@ the one you're actively working on. Forgetting one leaves it silently rendering 
 stale build with no error — check its installed version against this file with
 `grep '"version"' node_modules/stappie-shared-ui/package.json`.
 
+## 0.7.5 — 2026-10-07
+
+`DynamicContentGrid`: **the filter state lives in the URL**, so a search can be bookmarked and shared, and survives
+opening a card and coming back. New prop `urlState` (`true`, or a string to namespace one grid among several on a
+page) — **opt-in**: the admin's preview leaves it off, it must never touch the editor's own URL; mini_site's
+`DynamicBlockClient` turns it on.
+
+- `?categories=12&subregion.id=3&ageGroups=adults&ageGroups=seniors&q=taal` — one parameter per filter, named after the
+  filter's `field` (a label can be renamed or translated, the field cannot); a filter with several chosen values
+  repeats it; the search term is `q`. Other parameters and the `#hash` are left alone. With a string prefix:
+  `?block7.categories=12`.
+- Read once after mount (never during the first render, so what the browser hydrates matches the server's markup);
+  written on every change with `replaceState` — typing must not fill the history — and typing is debounced.
+- A link can carry a value the data does not have (or spell a real one in another case): once the items are there it
+  is kept under its exact spelling or dropped, so the dropdown never disagrees with the results.
+- With `hideUntilFiltered`, a shared link with a filter in it shows its results straight away.
+- New module `filterUrlState.js` holds the pure read/write functions.
+
+## 0.7.4 — 2026-10-07
+
+`service-card`: **which value of an array a slot shows.** A slot path may run through an array of references —
+`image: "categories.image"` is the drawing of each of a service's categories — and the card has to pick one (or
+join several). That is a setting of the SLOT, stored next to it in `fieldMap` as `<slot>Pick`, because the slots want
+different things: the drawing is one category's, a text line may name several.
+
+- `first` (the default, and what 0.7.3 always did — a service's first category is its main one), `last`, `random`,
+  `all` (joined with ", ") and `all:3` (at most 3). Anything else is `first`.
+- `random` is **stable**: the choice is made from the item's id, so a card always shows the same one — no flicker
+  between renders, no difference between the server and the browser, none between the preview and the site.
+- The drawing never joins: `all` counts as `first` there. A slot pointing at a whole populated reference
+  (`image: "categories"`) uses that reference's `image`.
+- `first` and `last` are positional: when the main category has no drawing the card shows none, rather than another
+  category's. `random` and `all` choose among the values that exist.
+- The admin's field picker offers `categories.image` ("Categorie → Afbeelding") and the "Welke?" setting; no change
+  to the block's data shape — `fieldMap` already held free strings.
+
 ## 0.7.3 — 2026-10-07
 
 `DynamicContentGrid`: the design team's **service card**, as a new `cardDesign` — `service-card`. The existing

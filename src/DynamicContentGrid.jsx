@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Image as ImageIcon, User as UserIcon, Folder as FolderIcon } from 'lucide-react';
 import ActionButtons from './ActionButtons.jsx';
+import { readFilterState, writeFilterState, canonicalFilterState } from './filterUrlState.js';
 
 // DynamicContentGrid — shared, presentational card-grid + filter bar for the "dynamic
 // content" block. Data fetching (which differs per app: admin uses an authenticated
@@ -44,28 +45,73 @@ function getByPath(item, path, lang, defaultLang) {
     return cur[lastKey] ?? '';
 }
 
+const isIndex = (key) => /^\d+$/.test(key);
+
 /**
- * getByPath, except that a path running through an ARRAY reads its first element: "categories.image" is the
- * main category's drawing (a service's first category is its main one). An explicit index ("categories.0.image")
- * works with plain getByPath as well — this only adds the shorthand the editor's field picker offers.
+ * Every value on a path, in order — the service card's counterpart of getByPath. A path that runs through an ARRAY
+ * ("categories.image") yields one value per element; an array that is the value itself ("ageGroups") yields its
+ * elements; an explicit index ("categories.0.image") picks that element. A missing value keeps its place (undefined),
+ * so "the first category" stays the first category even when it has no drawing.
  */
-function getFirstByPath(item, path, lang, defaultLang) {
-    if (!item || !path) return '';
+function valuesByPath(item, path, lang, defaultLang) {
+    if (!item || !path) return [];
     const parts = path.split('.');
-    const isIndex = (key) => /^\d+$/.test(key);
-    let cur = item;
-    for (let i = 0; i < parts.length - 1; i++) {
-        if (Array.isArray(cur) && !isIndex(parts[i])) cur = cur[0];
-        if (cur == null || typeof cur !== 'object') return '';
-        cur = cur[parts[i]];
-    }
-    const last = parts[parts.length - 1];
-    if (Array.isArray(cur) && !isIndex(last)) cur = cur[0];
-    return getByPath(cur, last, lang, defaultLang);
+    let layer = [item];
+    parts.forEach((part, i) => {
+        const last = i === parts.length - 1;
+        const read = (node) => {
+            if (Array.isArray(node)) return isIndex(part) ? [node[Number(part)]] : node.flatMap(read);
+            if (node == null || typeof node !== 'object') return [];
+            let v = node[part];
+            if (last && lang && lang !== defaultLang) {
+                const translated = node[`${part}__i18n__${lang}`];
+                if (translated != null && translated !== '') v = translated;
+            }
+            return [v];
+        };
+        layer = layer.flatMap(read);
+    });
+    return layer.flatMap((v) => (Array.isArray(v) ? v : [v]));
 }
 
 // A populated reference ({id, name, ...}) shown as text: its name/title; anything else as plain text.
 const asText = (v) => (v != null && typeof v === 'object' ? String(v.name ?? v.title ?? '') : String(v ?? '')).trim();
+
+const hasValue = (v) => v != null && v !== '' && !(typeof v === 'object' && !asText(v) && !v.image && !v.url);
+
+// Which of a slot's values the card shows: fieldMap[`${slot}Pick`] — "first" (the default: a service's first category
+// is its main one), "last", "random" (stable: the same card always shows the same one), "all" (joined with commas) or
+// "all:3" (at most 3). Anything else is "first".
+function parsePick(raw) {
+    const m = /^(first|last|random|all)(?::(\d+))?$/.exec(String(raw ?? ''));
+    return m ? { mode: m[1], max: m[2] ? Number(m[2]) : null } : { mode: 'first', max: null };
+}
+
+// A number from the item alone, so "random" never changes between renders, reloads or the server and the browser.
+function stableIndex(item, n) {
+    const key = String(item?.id ?? item?.name ?? '');
+    let h = 0;
+    for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+    return h % n;
+}
+
+// What one slot of the service card shows. `single` slots (the drawing) never join: "all" counts as "first".
+function slotValue(item, fieldMap, slot, lang, defaultLang, { single = false } = {}) {
+    const path = fieldMap[slot];
+    if (!path) return '';
+    const values = valuesByPath(item, path, lang, defaultLang);
+    const { mode, max } = parsePick(fieldMap[`${slot}Pick`]);
+    const filled = values.filter(hasValue);
+    switch (single && mode === 'all' ? 'first' : mode) {
+        case 'last': return values.length ? (values[values.length - 1] ?? '') : '';
+        case 'random': return filled.length ? filled[stableIndex(item, filled.length)] : '';
+        case 'all': return filled.slice(0, max ?? undefined).map(asText).filter(Boolean).join(', ');
+        default: return values[0] ?? '';
+    }
+}
+
+// The drawing's URL: a string as it is, or — when the slot points at a whole populated reference — its image.
+const imageSource = (v) => (typeof v === 'string' ? v : v && typeof v === 'object' ? String(v.image ?? v.url ?? '') : '').trim();
 
 // The service card's short description. A value that is already short is shown as it is; a longer one (the
 // full description) is cut to its first two sentences. The card clamps what is left to 3 lines.
@@ -284,20 +330,20 @@ function PreviewCard({ item, design, fieldMap, collection, detailUrlBuilder, dat
 
     switch (design) {
         // The design team's service card: the main category's drawing, the name, "organisation · area", a short
-        // description (3 lines at most) and, pinned to the bottom, a row of up to 3 known features. Every slot
-        // reads the first element of an array on its path (see getFirstByPath), and an empty one is left out.
+        // description (3 lines at most) and, pinned to the bottom, a row of up to 3 known features. A slot whose path
+        // runs through an array shows the value its `<slot>Pick` setting picks (see slotValue); an empty one is left out.
         case 'service-card': {
-            const first = (slot) => (fieldMap[slot] ? getFirstByPath(item, fieldMap[slot], lang, defaultLang) : '');
-            const drawing = asText(first('image'));
-            const meta = [first('meta1'), first('meta2')].map(asText).filter(Boolean).join(' \u00b7 ');
-            const summary = summaryText(first('summary'));
+            const slot = (name, options) => slotValue(item, fieldMap, name, lang, defaultLang, options);
+            const drawing = imageSource(slot('image', { single: true }));
+            const meta = [slot('meta1'), slot('meta2')].map(asText).filter(Boolean).join(' \u00b7 ');
+            const summary = summaryText(asText(slot('summary')));
             const features = ['feature1', 'feature2', 'feature3']
-                .map((slot) => featureText(item, fieldMap[slot], fieldLabels, lang, defaultLang))
+                .map((name) => featureText(item, fieldMap[name], fieldLabels, lang, defaultLang))
                 .filter(Boolean).slice(0, 3).join(' \u00b7 ');
             return (
                 <>
                     {drawing && <img className="sui-dyn-card-icon" src={drawing} alt="" loading="lazy" />}
-                    <h3>{asText(first('heading')) || item.name || item.title || '\u2014'}</h3>
+                    <h3>{asText(slot('heading')) || item.name || item.title || '\u2014'}</h3>
                     {meta && <div className="sui-dyn-card-meta">{meta}</div>}
                     {summary && <div className="sui-dyn-card-summary">{summary}</div>}
                     {features && <div className="sui-dyn-card-features">{features}</div>}
@@ -523,6 +569,10 @@ export default function DynamicContentGrid({
     // Admin-only diagnostic toggle — never set true on the published site. See
     // getUniqueValues' own comment for exactly what it logs and why.
     debug = false,
+    // Keep the filter state in the page's URL (?categories=12&q=taal) so a search can be bookmarked and shared, and
+    // survives a visit to a card and the way back. Opt-in: the admin's preview must never touch the editor's own URL.
+    // `true`, or a string to namespace the parameters of one grid among several on a page. See filterUrlState.js.
+    urlState = false,
 }) {
     const strings = { ...DEFAULT_STRINGS, ...stringsProp };
     const [activeFilters, setActiveFilters] = useState({});
@@ -532,6 +582,54 @@ export default function DynamicContentGrid({
     const pos = filterBarConfig.position ?? 'top';
     const hasActive = searchTerm.length > 0 || Object.values(activeFilters).some(v => v.length > 0);
     const resetFilters = () => { setActiveFilters({}); setSearchTerm(''); };
+
+    // ---- filter state <-> URL ------------------------------------------------------------------------------------
+    const urlSync = Boolean(urlState) && hasFilterBar;
+    const urlPrefix = typeof urlState === 'string' && urlState ? `${urlState}.` : '';
+    const urlFilters = (filterBarConfig.filters ?? []).filter((f) => f.field);
+    const [urlRead, setUrlRead] = useState(false);
+    const urlWrittenSearch = useRef('');
+    const urlCleaned = useRef(false);
+
+    // Read once, after mount (never during the first render: the server rendered the page without the URL's state, and
+    // what the browser hydrates must match it).
+    useEffect(() => {
+        if (!urlSync) return;
+        const fromUrl = readFilterState(window.location.search, urlFilters, { searchEnabled: Boolean(filterBarConfig.searchEnabled), prefix: urlPrefix });
+        if (Object.keys(fromUrl.activeFilters).length) setActiveFilters(fromUrl.activeFilters);
+        if (fromUrl.searchTerm) { setSearchTerm(fromUrl.searchTerm); urlWrittenSearch.current = fromUrl.searchTerm; }
+        setUrlRead(true);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [urlSync]);
+
+    // Once the data is here: a link can carry a value the data does not have (or spell it in another case) — keep what
+    // exists, under its exact spelling, drop the rest.
+    useEffect(() => {
+        if (!urlSync || !urlRead || urlCleaned.current || loading || !items.length) return;
+        urlCleaned.current = true;
+        const universe = Object.fromEntries(urlFilters.map((f) => [f.field, getUniqueValues(items, f.field, lang, defaultLang, fieldLabels).map((o) => o.value)]));
+        setActiveFilters((prev) => canonicalFilterState(prev, universe));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [urlSync, urlRead, loading, items]);
+
+    // Write on every change — replaceState, not pushState: typing must not fill the history, and the page that is left
+    // (to open a card) already carries the state, so "back" returns to the same search. Typing is debounced.
+    useEffect(() => {
+        if (!urlSync || !urlRead) return;
+        // only a term being TYPED waits: clearing (the box emptied, or "Filters wissen") is written at once
+        const typing = searchTerm !== '' && searchTerm !== urlWrittenSearch.current;
+        const write = () => {
+            urlWrittenSearch.current = searchTerm;
+            try {
+                const next = writeFilterState(window.location.href, urlFilters, activeFilters, searchTerm, { prefix: urlPrefix });
+                if (next !== window.location.pathname + window.location.search + window.location.hash) window.history.replaceState(window.history.state, '', next);
+            } catch { /* a sandboxed frame or an unusual origin may refuse — the filters still work, just not in the URL */ }
+        };
+        if (!typing) { write(); return undefined; }
+        const timer = setTimeout(write, 300);
+        return () => clearTimeout(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeFilters, searchTerm, urlRead, urlSync]);
     // Opt-in: start with an empty results area instead of showing every item — only
     // meaningful with an actual filter bar to interact with (hideUntilFiltered on a block
     // with no search/filters at all would leave it permanently empty, no way to reveal
